@@ -1,0 +1,28 @@
+---
+- name: Manage filesystem
+  community.general.zfs:
+    name: "pg-{{ cluster.disk_type }}/{{ cluster.pg_name }}"
+    state: present
+    extra_zfs_properties:
+      quota: "{{ cluster.disk_quota }}"
+      mountpoint: "/var/lib/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
+  loop: "{{ clusters }}"
+  loop_control:
+    loop_var: cluster
+    label: "{{ cluster.pg_name }}"
+  tags: ['filesystem']
+
+- ansible.builtin.include_tasks: _cluster.yml
+  loop: "{{ clusters }}"
+  loop_control:
+    loop_var: cluster
+    label: "{{ cluster.pg_name }}"
+  vars:
+    pg_data_dir: "/var/lib/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
+    pg_conf_dir: "/etc/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
+    pg_bin_dir: "/usr/lib/postgresql/{{ cluster.pg_version }}/bin"
+  tags: ['cluster']
+
+- debug:
+    msg: "{{ 'debug' }}"
+  tags: ['debug']

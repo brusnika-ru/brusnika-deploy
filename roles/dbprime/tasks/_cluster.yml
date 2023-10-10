@@ -1,0 +1,154 @@
+---
+- name: "{{ cluster.pg_name }} | Ensure PostgreSQL data directory is exists"
+  ansible.builtin.file:
+    path: "{{ pg_data_dir }}"
+    owner: postgres
+    group: postgres
+    state: directory
+    mode: "0700"
+
+- name: "{{ cluster.pg_name }} | Ensure the PostgreSQL config files is exists"
+  ansible.builtin.stat:
+    path: "{{ pg_conf_dir }}/postgresql.conf"
+  register: postgresql_conf_file
+
+- block:
+    - name: "{{ cluster.pg_name }} | Generate default PostgreSQL config files"
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >
+        /usr/bin/pg_createcluster {{ cluster.pg_version }} {{ cluster.pg_name }}
+        -d {{ pg_data_dir }}
+        -p {{ cluster.pg_port }}
+        -e {{ pg_encoding }}
+        --locale {{ pg_locale }}
+      register: pg_createcluster_result
+      failed_when: pg_createcluster_result.rc != 0
+
+    - name: "{{ cluster.pg_name }} | Config listiner"
+      ansible.builtin.copy:
+        dest: "{{ pg_conf_dir }}/conf.d/00_listener.conf"
+        content: |
+          listen_addresses = 'localhost,{{ ansible_eth0.ipv4.address }}'
+  when: not postgresql_conf_file.stat.exists
+
+- name: "{{ cluster.pg_name }} | Add config stanza"
+  ansible.builtin.template:
+    src: templates/stanza.conf.j2
+    dest: "/etc/pgbackrest/conf.d/{{ cluster.pg_version }}_{{ cluster.pg_name }}.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+
+- block: # on Master
+    - name: "{{ cluster.pg_name }} | Сheck PostgreSQL is started"
+      become: true
+      become_user: postgres
+      ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
+      register: pg_ctl_status_result
+      changed_when: false
+      failed_when:
+        - pg_ctl_status_result.rc != 0
+        - pg_ctl_status_result.rc != 3
+    
+    - block:
+        - name: "{{ cluster.pg_name }} | Start PostgreSQL"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} start"
+          register: pg_start_on_master
+        
+        - name: "{{ cluster.pg_name }} | Config replication"
+          ansible.builtin.copy:
+            dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
+            content: |
+              wal_level = replica
+              max_wal_senders = 3
+              archive_mode = on
+              archive_command = 'pgbackrest --stanza={{ cluster.pg_version }}_{{  cluster.pg_name }} archive-push %p'
+
+        - name: "{{ cluster.pg_name }} | Ensure the user replicator are present, and password does not differ from the specified"
+          community.postgresql.postgresql_user:
+            db: postgres
+            name: replicator
+            password: "{{ replicator_password }}"
+            encrypted: true
+            role_attr_flags: "LOGIN,REPLICATION"
+            login_unix_socket: "{{ pg_unix_socket_dir }}"
+            port: "{{ cluster.pg_port }}"
+            state: present
+          become: true
+          become_user: postgres
+
+        - name: "{{ cluster.pg_name }} | Generate pg_hba.conf"
+          ansible.builtin.template:
+            src: templates/pg_hba.conf.j2
+            dest: "{{ pg_conf_dir }}/pg_hba.conf"
+            owner: postgres
+            group: postgres
+            mode: "0640"
+          register: pg_hba_generate
+
+        - name: "{{ cluster.pg_name }} | Restart PostgreSQL"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} restart"
+
+        - name: "{{ cluster.pg_name }} | Create stanza"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ cluster.pg_version }}_{{ cluster.pg_name }} stanza-create"
+
+        - name: "{{ cluster.pg_name }} | Create backup"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ cluster.pg_version }}_{{ cluster.pg_name }} backup"
+
+      when: pg_ctl_status_result.rc == 3
+  when: pg_role == 'master'
+
+- block: # On Replica
+    - name: Add pgpass
+      ansible.builtin.copy:
+        dest: "/var/lib/postgresql/.pgpass"
+        content: |
+          {{ hostvars[groups[group_names[0] + '_master'][0]].ansible_all_ipv4_addresses[0] }}:*:replication:replicator:{{ replicator_password }}
+        owner: postgres
+        group: postgres
+        mode: "0600"
+
+    - name: "{{ cluster.pg_name }} | Сheck PostgreSQL is started"
+      become: true
+      become_user: postgres
+      ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
+      register: pg_ctl_status_result
+      changed_when: false
+      failed_when:
+        - pg_ctl_status_result.rc != 0
+        - pg_ctl_status_result.rc != 3
+
+    - block:
+        - name: "{{ cluster.pg_name }} | Start stanza restore"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza {{ cluster.pg_version }}_{{ cluster.pg_name }} --delta --type=standby restore"
+          register: pg_stanza_on_replica
+
+        - name: "{{ cluster.pg_name }} | Config replication"
+          ansible.builtin.copy:
+            dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
+            content: |
+              wal_level = replica
+              max_wal_senders = 3
+              archive_mode = on
+              hot_standby = on
+              archive_command = 'pgbackrest --stanza={{ cluster.pg_version }}_{{  cluster.pg_name }} archive-push %p'
+
+        - name: "{{ cluster.pg_name }} | Start PostgreSQL"
+          become: true
+          become_user: postgres
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} start"
+          register: pg_start_on_replica
+
+      when: pg_ctl_status_result.rc == 3
+  when: pg_role == 'replica'
