@@ -1,5 +1,5 @@
-[{{ cluster.pg_version }}_{{ cluster.pg_name }}]
-pg1-path=/var/lib/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}
+[{{ pg_ver }}_{{ cluster.pg_name }}]
+pg1-path=/var/lib/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}
 pg1-port={{ cluster.pg_port }}
 {% if pg_role == 'replica' %}
 recovery-option=primary_conninfo=host={{ hostvars[groups[group_names[0] + '_master'][0]].ansible_all_ipv4_addresses[0] }} port={{ cluster.pg_port }} user=replicator

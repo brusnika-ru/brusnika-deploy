@@ -17,7 +17,7 @@
       become: true
       become_user: postgres
       ansible.builtin.command: >
-        /usr/bin/pg_createcluster {{ cluster.pg_version }} {{ cluster.pg_name }}
+        /usr/bin/pg_createcluster {{ pg_ver }} {{ cluster.pg_name }}
         -d {{ pg_data_dir }}
         -p {{ cluster.pg_port }}
         -e {{ pg_encoding }}
@@ -35,7 +35,7 @@
 - name: "{{ cluster.pg_name }} | Add config stanza"
   ansible.builtin.template:
     src: templates/stanza.conf.j2
-    dest: "/etc/pgbackrest/conf.d/{{ cluster.pg_version }}_{{ cluster.pg_name }}.conf"
+    dest: "/etc/pgbackrest/conf.d/{{ pg_ver }}_{{ cluster.pg_name }}.conf"
     owner: postgres
     group: postgres
     mode: "0640"
@@ -55,7 +55,7 @@
         - name: "{{ cluster.pg_name }} | Start PostgreSQL"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} start"
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} start"
           register: pg_start_on_master
         
         - name: "{{ cluster.pg_name }} | Config replication"
@@ -65,7 +65,7 @@
               wal_level = replica
               max_wal_senders = 3
               archive_mode = on
-              archive_command = 'pgbackrest --stanza={{ cluster.pg_version }}_{{  cluster.pg_name }} archive-push %p'
+              archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{  cluster.pg_name }} archive-push %p'
 
         - name: "{{ cluster.pg_name }} | Ensure the user replicator are present, and password does not differ from the specified"
           community.postgresql.postgresql_user:
@@ -92,17 +92,17 @@
         - name: "{{ cluster.pg_name }} | Restart PostgreSQL"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} restart"
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} restart"
 
         - name: "{{ cluster.pg_name }} | Create stanza"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ cluster.pg_version }}_{{ cluster.pg_name }} stanza-create"
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} stanza-create"
 
         - name: "{{ cluster.pg_name }} | Create backup"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ cluster.pg_version }}_{{ cluster.pg_name }} backup"
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup"
 
       when: pg_ctl_status_result.rc == 3
   when: pg_role == 'master'
@@ -131,7 +131,7 @@
         - name: "{{ cluster.pg_name }} | Start stanza restore"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza {{ cluster.pg_version }}_{{ cluster.pg_name }} --delta --type=standby restore"
+          ansible.builtin.command: "/usr/bin/pgbackrest --stanza {{ pg_ver }}_{{ cluster.pg_name }} --delta --type=standby restore"
           register: pg_stanza_on_replica
 
         - name: "{{ cluster.pg_name }} | Config replication"
@@ -142,12 +142,12 @@
               max_wal_senders = 3
               archive_mode = on
               hot_standby = on
-              archive_command = 'pgbackrest --stanza={{ cluster.pg_version }}_{{  cluster.pg_name }} archive-push %p'
+              archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{  cluster.pg_name }} archive-push %p'
 
         - name: "{{ cluster.pg_name }} | Start PostgreSQL"
           become: true
           become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ cluster.pg_version }} {{ cluster.pg_name }} start"
+          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} start"
           register: pg_start_on_replica
 
       when: pg_ctl_status_result.rc == 3

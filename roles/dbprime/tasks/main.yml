@@ -1,11 +1,11 @@
 ---
 - name: Manage filesystem
   community.general.zfs:
-    name: "pg-{{ cluster.disk_type }}/{{ cluster.pg_name }}"
+    name: "pg-{{ cluster.disk_type  | default(disk_type) }}/{{ cluster.pg_name }}"
     state: present
     extra_zfs_properties:
       quota: "{{ cluster.disk_quota }}"
-      mountpoint: "/var/lib/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
+      mountpoint: "/var/lib/postgresql/{{ cluster.pg_version | default(pg_version) }}/{{ cluster.pg_name }}"
   loop: "{{ clusters }}"
   loop_control:
     loop_var: cluster
@@ -18,9 +18,10 @@
     loop_var: cluster
     label: "{{ cluster.pg_name }}"
   vars:
-    pg_data_dir: "/var/lib/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
-    pg_conf_dir: "/etc/postgresql/{{ cluster.pg_version }}/{{ cluster.pg_name }}"
-    pg_bin_dir: "/usr/lib/postgresql/{{ cluster.pg_version }}/bin"
+    pg_ver: "{{ cluster.pg_version | default(pg_version) }}"
+    pg_data_dir: "/var/lib/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}"
+    pg_conf_dir: "/etc/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}"
+    pg_bin_dir: "/usr/lib/postgresql/{{ pg_ver }}/bin"
   tags: ['cluster']
 
 - debug:
