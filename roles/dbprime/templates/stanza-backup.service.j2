@@ -1,0 +1,7 @@
+[Unit]
+Description=Perform backup with PgBackRest for {{ unit }}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup --type {{ type }}
+SyslogIdentifier=pgbackrest

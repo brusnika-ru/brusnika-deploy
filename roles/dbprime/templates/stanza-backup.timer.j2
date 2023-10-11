@@ -1,0 +1,10 @@
+[Unit]
+Description=Timer for {{ unit }} backup service
+
+[Timer]
+Unit={{ unit }}.service
+OnCalendar={{ oncalendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

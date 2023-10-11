@@ -40,6 +40,44 @@
     group: postgres
     mode: "0640"
 
+- name: "{{ cluster.pg_name }} | Configure schedule backup"
+  block:
+    - ansible.builtin.template:
+        src: templates/stanza-backup.service.j2
+        dest: "/etc/systemd/system/{{ unit }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cluster.backups }}"
+      vars:
+        type: "{{ item['type'] }}"
+        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}"
+
+    - ansible.builtin.template:
+        src: templates/stanza-backup.timer.j2
+        dest: "/etc/systemd/system/{{ unit }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cluster.backups }}"
+      vars:
+        oncalendar: "{{ item['oncalendar'] }}"
+        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}"
+      #register: __installed_timers
+
+    - ansible.builtin.systemd:
+        daemon_reload: true
+
+    - ansible.builtin.systemd:
+        name: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}.timer"
+        state: started
+        enabled: true
+      loop: "{{ cluster.backups }}"
+
+  when: 
+    - cluster.backups is defined and cluster.backups | length > 0
+    - pg_role == 'master'
+
 - block: # on Master
     - name: "{{ cluster.pg_name }} | Сheck PostgreSQL is started"
       become: true
