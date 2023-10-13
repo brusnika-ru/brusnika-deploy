@@ -13,6 +13,8 @@ pg_unix_socket_dir: /var/run/postgresql
 
 replicator_password: 'doo6icaep0ooLuokae'
 
+replica_enabled: True
+
 postgresql_pg_hba: []
 
 port_scheme:
@@ -31,13 +33,14 @@ port_scheme:
     pas: 2
     vrs: 3
   erp_mgmt_subsystem:
-    land: 0 
-    design: 1 
-    order: 2 
-    sales: 3 
-    finance: 4 
-    organization: 5 
-    development: 6 
+    land: 0
+    design: 1
+    order: 2
+    sales: 3
+    finance: 4
+    organization: 5
+    development: 6
+    rnd: 7
   oa_system:
     land: 00
     pc: 01

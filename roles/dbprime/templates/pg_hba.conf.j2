@@ -95,6 +95,8 @@ host    all             all             127.0.0.1/32            scram-sha-256
 local   replication     all                                     peer
 host    replication     all             127.0.0.1/32            scram-sha-256
 
+{% if replica_enabled %}
 {% for host in groups[group_names[0] + '_replica'] %}
 host    replication     replicator      {{ hostvars[host].ansible_all_ipv4_addresses[0] }}/32         scram-sha-256
 {% endfor %}
+{% endif %}
