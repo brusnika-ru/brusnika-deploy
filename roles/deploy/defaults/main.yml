@@ -6,7 +6,7 @@ region: "nomad-gld"
 datacenter:
   staging:
     - "nomad-gld-stg-1"
-  preprod:
+  rc:
     - "nomad-gld-rc-1"
   production:
     - "nomad-gld-1"
@@ -34,7 +34,7 @@ proxy_default:
 image_version: latest
 repo_url:
   staging: "snapshot-repo.brusnika.tech/brusnika/"
-  preprod: "rc-repo.brusnika.tech/brusnika/"
+  rc: "rc-repo.brusnika.tech/brusnika/"
   production: "release-repo.brusnika.tech/brusnika/"
 
 resources:
@@ -56,5 +56,5 @@ artifact_configs_repo_uri  : "gitlab.brusnika.tech:/inf/{{ artifact_configs_repo
 
 branch:
   staging: "master"
-  preprod: "release-candidate"
+  rc: "release-candidate"
   production: "release"
