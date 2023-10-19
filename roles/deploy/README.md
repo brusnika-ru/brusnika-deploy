@@ -38,6 +38,8 @@
 ---
 - hosts: localhost
   gather_facts: no
+  collections:
+    - brusnika.deploy
   roles:
     - deploy
   vars:
@@ -54,6 +56,8 @@
 ---
 - hosts: localhost
   gather_facts: no
+  collections:
+    - brusnika.deploy
   roles:
     - deploy
   vars:
@@ -73,6 +77,8 @@
 ---
 - hosts: localhost
   gather_facts: no
+  collections:
+    - brusnika.deploy
   roles:
     - deploy
   vars:
