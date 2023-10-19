@@ -127,6 +127,22 @@
             target: myconfig/
 ```
 
+Включение веб-сокетов на прокси
+```yaml
+---
+...
+  vars:
+    proxy:
+      host: validator.staging.brusnika.tech
+      locations:
+        - name: /socket.io
+          container: backend
+          proxy_options: |
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+```
+
 ### Управление базами данных
 ```yaml
 ---
