@@ -12,21 +12,22 @@
 |----------|---------|----------|
 | `realm` | `staging` | Среда для деплоймента |
 | `region` | `gld` | Регион расположения кластера |
-| `datacenters` | `{`<br>    `"production": ["gld-1"],`<br>`  "staging": ["gld-stg-1"]`<br>`}` | Датацентры в которых расположены кластера worker-нод |
+| `datacenters` | `{`<br>`"production": ["gld-1"],`<br>`"staging": ["gld-stg-1"],`<br> `"rc: ["gld-rc-1"]"` <br> `}` | Датацентры в которых расположены кластера worker-нод |
 | `ports` | `{`<br>`  "api": { "to": 3000 },`<br>`  "http": { "to": 80 }`<br>`}` | Маппинг портов |
-| `containers` | `{`<br>`  "backend": { "configs": [ "config.yaml" ] },`<br>`  "frontend": null`<br>`}` | Контейнеры которые будут запущены |
+| `containers` | `{`<br>`"backend": { "configs": [ "config.yaml" ] },`<br>`"frontend": null`<br>`}` | Контейнеры которые будут запущены |
 | `proxy` | `{}` | Конфигурация проксирования сервиса |
 | **`proxy.host`** | `not defined`  | URL на котором будет опубликован сервис |
-| `proxy.locations[]` | `{`<br>    `"container": "frontend",`<br>`  "name": "/"`<br>`}, {`<br>`   "container": "backend",`<br>`   "name": "/backend/"` <br>`}` | Проксирование location на определенный контейнер |
+| `proxy.locations[]` | `{`<br>`"name": "/",`<br>`"container": "frontend"`<br>`},{`<br>`"name": "/backend/",`<br>`"container": "backend"`<br> `},{`<br> `"name": "/soket.io",`<br>`"container": "backend",`<br>`"options": "proxy_http_version 1.1;"` | Проксирование location на определенный контейнер |
 | `app_name` | `<service folder name>` | Название сервиса. Берется из имени папки, в которой лежит deploy.yaml |
 | `image_version` | `latest` | Версия образов которые будут задеплоены |
-| `snapshot_repo_url` | `snapshot-repo.brusnika.tech/brusnika/` | стейдж репозитория имеджей |
-| `release_repo_url` | `release-repo.brusnika.tech/brusnika/` | продакшн репозитория имеджей |
-| `repo_url` | `"{{ snapshot_repo_url }}"` | Зависит от текущего `realm` |
+| `repo_url.snapshot` | `snapshot-repo.brusnika.tech/brusnika/` | репозиторий стейдж имеджей |
+| `repo_url.release` | `release-repo.brusnika.tech/brusnika/` | репозиторий продакшн имеджей |
+| `repo_url.rc` | `rc-repo.brusnika.tech/brusnika/` | репозиторий релиз-кандидат имеджей |
 | `containers.<container-name>.image` | `"{{ repo_url }}{{ app_name }}-{{ container }}:{{ image_version }}"` | Имедж из которого будет запущен контейнер |
 | `containers.<container-name>.resources` | `{}` | Управление ресурсами выделямыми на контейнер |
 | `containers.<container-name>.command` | `` | Комманда запуска при старте контейнера |
 | `containers.<container-name>.configs` | `[]` | Список файлов для монтирования в контейнер с хоста. По-умолчанию файлы монтируются в корень, если надо в другое место, то надо передать объект вида {'<имя_файла>': {'target': '<путь_монтирования/>'}}  |
+| `containers.<container-name>.port` | `` | Имя порта для проброса в контейнер |
 | `resources.cpu` | `10` | Гарантированая производительность ЦПУ в МГц. Не используется одновременно с `resources.cores` |
 | `resources.cores` | `null` | Гарантированное количество ядер ЦПУ. Не используется одновременно с `resources.cpu` |
 | `resources.memory` | `50` | Гарантированный объем RAM в Мб |
