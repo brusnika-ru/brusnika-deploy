@@ -24,14 +24,13 @@
 | `repo_url.release` | `release-repo.brusnika.tech/brusnika/` | репозиторий продакшн имеджей |
 | `repo_url.rc` | `rc-repo.brusnika.tech/brusnika/` | репозиторий релиз-кандидат имеджей |
 | `containers.<container-name>.image` | `"{{ repo_url }}{{ app_name }}-{{ container }}:{{ image_version }}"` | Имедж из которого будет запущен контейнер |
-| `containers.<container-name>.resources` | `{}` | Управление ресурсами выделямыми на контейнер |
 | `containers.<container-name>.command` | `` | Комманда запуска при старте контейнера |
 | `containers.<container-name>.configs` | `[]` | Список файлов для монтирования в контейнер с хоста. По-умолчанию файлы монтируются в корень, если надо в другое место, то надо передать объект вида {'<имя_файла>': {'target': '<путь_монтирования/>'}}  |
 | `containers.<container-name>.port` | `` | Имя порта для проброса в контейнер |
-| `resources.cpu` | `10` | Гарантированая производительность ЦПУ в МГц. Не используется одновременно с `resources.cores` |
-| `resources.cores` | `null` | Гарантированное количество ядер ЦПУ. Не используется одновременно с `resources.cpu` |
-| `resources.memory` | `50` | Гарантированный объем RAM в Мб |
-| `resources.memory_max` | `100` | Максимальный объем RAM в Мб |
+| `containers.<container-name>.resources.cpu` | `10` | Гарантированая производительность ЦПУ в МГц. Не используется одновременно с `resources.cores` |
+| `containers.<container-name>.resources.cores` | `null` | Гарантированное количество ядер ЦПУ. Не используется одновременно с `resources.cpu` |
+| `containers.<container-name>.resources.memory` | `50` | Гарантированный объем RAM в Мб |
+| `containers.<container-name>.resources.memory_max` | `100` | Максимальный объем RAM в Мб |
 
 ## Примеры конфига
 Сервис у которого один контейнер backend с одним конфиг-файлом:
