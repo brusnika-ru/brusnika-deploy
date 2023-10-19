@@ -1,0 +1,53 @@
+## {{ ansible_managed }}
+{% set zone_name = proxy['host'].split('.') | last %}
+{% for container in containers %}
+upstream {{ realm }}_{{ app_name }}-{{ container }} {
+    zone upstream_{{ realm }}_{{ app_name }} 64k;
+    server service.bru service={{ realm }}-{{ app_name }}-{{ container }} resolve;
+}
+{% endfor %}
+server {
+    listen 443 ssl http2;
+    server_name {{ proxy['host'] }};
+
+    ssl_certificate     /etc/angie/ssl/brusnika.{{ zone_name }}.cer;
+    ssl_certificate_key /etc/angie/ssl/brusnika.{{ zone_name }}.key;
+
+    {% for location in proxy['locations'] -%}
+    {% if location['name'] == '/' or location['noend'] is defined -%}
+        {% set end = '' %}
+    {% else -%}
+        {% set end = '/' %}
+    {% endif -%}
+
+    {% set pass = location['pass'] | d( proxy_pass_default, true ) -%}
+
+    location {{ location['name'] }} {
+        proxy_pass http://{{ realm }}_{{ app_name }}-{{ location['container'] }}{{ end }};
+        {% if location['proxy_options'] is defined %}
+        {{ location['proxy_options'] | indent(8) }}
+        {% endif %}
+    }
+    {% endfor %}
+
+    ## logging configuration
+    access_log /var/log/angie/{{ proxy['host'] }}.access.log;
+    error_log  /var/log/angie/{{ proxy['host'] }}.error.log;
+
+    ## acl configuration
+    #include conf.d/allow.conf;
+    #deny all;
+
+    location = /robots.txt {
+       add_header Content-Type text/plain;
+       return 200 "User-agent: *\nDisallow: /\n";
+    }
+    add_header X-Robots-Tag "noindex, nofollow, nosnippet, noarchive" always;
+}
+
+server {
+    listen 80;
+    server_name {{ proxy['host'] }};
+
+    return 301 https://$host$request_uri;
+}

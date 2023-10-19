@@ -1,0 +1,61 @@
+- ansible.builtin.set_fact:
+    db_name: "{{ db.name | replace('-','_') }}"
+
+- ansible.builtin.set_fact:
+    db_password: "{{ lookup('ansible.builtin.password', '/dev/null', seed=db_name) }}"
+
+- community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_url }}"
+    path: "{{ app_path }}_db"
+    engine_mount_point: "{{ realm }}"
+    auth_method: approle
+    role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
+    secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
+  register: response
+  ignore_errors: yes
+
+- community.hashi_vault.vault_write:
+    url: "{{ vault_url }}"
+    path: "{{ realm }}/data/{{ app_path }}_db"
+    data:
+      data:
+        db_host: "{{ db_host }}"
+        db_port: "{{ db_port }}"
+        db_name: "{{ db_name }}"
+        db_user: "{{ db_name }}"
+        db_password: "{{ db_password }}"
+    auth_method: approle
+    role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
+    secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
+  when: response.msg is defined and "Invalid or missing path" in response.msg
+
+- name: Make sure "{{ db_name }}" user are present
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ db_name }}"
+    password: "{{ db_password }}"
+    login_port: "{{ db_port }}"
+  delegate_to: "{{ db_host }}"
+
+- name: Make sure "{{ db_name }}" database are present
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ db_name }}"
+    owner: "{{ db_name }}"
+    login_port: "{{ db_port }}"
+  delegate_to: "{{ db_host }}"
+
+- name: "Add extension to database"
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_ext:
+    db: "{{ db_name }}"
+    name: "{{ extension }}"
+    schema: public
+    login_port: "{{ db_port }}"
+  loop: "{{ db.ext }}"
+  loop_control:
+    loop_var: extension
+  delegate_to: "{{ db_host }}"

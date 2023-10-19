@@ -1,0 +1,6 @@
+- name: reload_angie
+  ansible.builtin.systemd:
+    name: angie
+    state: reloaded
+  become: yes
+  delegate_to: cld-prx-01

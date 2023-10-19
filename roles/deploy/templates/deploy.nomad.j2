@@ -1,0 +1,146 @@
+variable "repo_password" {
+  type = string
+}
+
+job "{{ realm }}_{{ app_name }}" {
+  region      = "{{ region }}"
+  datacenters = {{ datacenter[realm] | to_json }}
+  
+  type = "service"
+  
+  # for redeploy without changes in this file
+  meta {
+    run_uuid = "${uuidv4()}"
+  }
+  
+  vault {
+    policies = ["{{ realm }}_nomad-client_{{ app_path }}"]
+  }
+
+  group "containers" {
+    network {
+      mode = "bridge"
+      {% if ports is not defined %}
+        {% set ports = dict(http_port_default, **api_port_default) %}
+      {% endif %}
+      {% for key, value in ports.items() %}
+      port "{{ key }}" {
+        {% if value.from is defined %}static = {{ value.from }}{% endif %}
+        {% if value.to is defined %}to     = {{ value.to }}{% endif %}
+      }
+      {% endfor %}
+    }
+
+    {% for key, value in containers.items() -%}
+    task "{{ key }}" {
+      driver = "podman"
+      service {
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
+        address_mode = "host"
+        {% if key == 'frontend' %}
+        port = "http"
+        {% elif key == 'backend' %}
+        port = "api"
+        {% else %}
+        port = {{ value.port | d('', True) | to_json }}
+        {% endif %}
+        meta {
+          container-name = "{{ key }}"
+        }
+      }
+      {% if value.configs is defined %}
+      artifact {
+        source = "git::git@{{ artifact_configs_repo_uri }}//{{ app_path }}/configs"
+        destination = "local/configs"
+        
+        options {
+          sshkey = "${base64encode(file(pathexpand("~/.ssh/{{ artifact_private_key_name }}")))}"
+          ref = {{ branch[realm] | to_json }}
+        }
+      }
+      {% for config in value.configs %}
+      template {
+        {% if config is mapping -%}
+          {% if config.env is defined -%}
+          source = "local/configs/{{ config.env }}"
+          destination = "local/{{ config.env }}"
+          env = true
+          {% endif -%}
+          {% for key, value in config.items() if config.env is undefined -%}  
+          source = "local/configs/{{ key }}"
+          destination = "local/{{ key }}"
+          {% endfor -%}
+        {% else -%}
+        source = "local/configs/{{ config }}"
+        destination = "local/{{ config }}"
+        {% endif %}
+      }
+      {% endfor %}
+      {% endif %}
+
+      config {
+        auth {
+          username = "nomad-svc"
+          password = var.repo_password
+        }
+        force_pull = true
+        {% if value.image is defined %}
+        image = "{{ value.image }}"
+        {% else %}
+        image = "{{ repo_url[realm] }}{{ app_name }}-{{ key }}:{{ image_version }}"
+        {% endif %}
+
+        {% if value.configs is defined %}
+        volumes = [
+          {% for config in value.configs %}
+            {% if config is mapping -%}
+              {% if config.env is not defined -%}
+              {% for key, value in config.items() if config.env is undefined -%}  
+              "local/{{ key }}:/{{ value.target }}{{ key }}",
+              {% endfor -%}
+              {% endif %}
+            {% else %}
+            "local/{{ config }}:/{{ config }}",
+            {% endif %}
+          {% endfor %}
+        ]
+        {% endif %}
+        {% if value.command is defined %}
+        command = "{{ value.command }}"
+        {% endif %}
+      }
+      {% if key == 'backend' %}
+      resources {
+        {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
+        cpu        = {{ value.resources['cpu'] }}
+        {% elif value.resources['cores'] is defined and value.resources['cpu'] is defined %}
+        cpu        = {{ resources_backend.cpu }}
+        {% elif value.resources['cores'] is not defined and value.resources['cpu'] is not defined %}
+        cpu        = {{ resources_backend.cpu }}
+        {% endif -%}
+        {% if value.resources is defined and value.resources['cores'] is defined and value.resources['cpu'] is not defined %}
+        cores      = {{ value.resources['cores'] }}
+        {% endif -%}
+        memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources_backend.memory) }}
+        memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources_backend.memory_max) }}
+      }
+      {% else %}
+      resources {
+        {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
+        cpu        = {{ value.resources['cpu'] }}
+        {% elif value.resources['cores'] is defined and value.resources['cpu'] is defined %}
+        cpu        = {{ resources.cpu }}
+        {% elif value.resources['cores'] is not defined and value.resources['cpu'] is not defined %}
+        cpu        = {{ resources.cpu }}
+        {% endif -%}
+        {% if value.resources is defined and value.resources['cores'] is defined and value.resources['cpu'] is not defined %}
+        cores      = {{ value.resources['cores'] }}
+        {% endif -%}
+        memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources.memory) }}
+        memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources.memory_max) }}
+      }
+      {% endif %}
+    }   
+    {% endfor %}
+  }
+}

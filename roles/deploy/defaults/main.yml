@@ -1,0 +1,60 @@
+---
+# defaults file for deploy
+realm: "{{ lookup('env', 'REALM') | default('staging', True) }}"
+
+region: "nomad-gld"
+datacenter:
+  staging:
+    - "nomad-gld-stg-1"
+  preprod:
+    - "nomad-gld-rc-1"
+  production:
+    - "nomad-gld-1"
+
+http_port_default:
+  http:
+    to: 80
+api_port_default:
+  api:
+    to: 3000
+
+containers_default:
+  frontend:
+  backend:
+    configs:
+      - config.yaml
+
+proxy_default:
+  locations:
+    - name: /
+      container: frontend
+    - name: /backend/
+      container: backend
+
+image_version: latest
+repo_url:
+  staging: "snapshot-repo.brusnika.tech/brusnika/"
+  preprod: "rc-repo.brusnika.tech/brusnika/"
+  production: "release-repo.brusnika.tech/brusnika/"
+
+resources:
+  cpu        : 10
+  memory     : 50
+  memory_max : 100
+
+resources_backend:
+  cpu        : 200
+  memory     : 100
+  memory_max : 200
+
+dns_servers  : ["10.176.0.2"]
+dns_searches : ["brusnika.ltd"]
+
+artifact_private_key_name  : id_gitlab
+artifact_configs_repo_name : nomad
+artifact_configs_repo_uri  : "gitlab.brusnika.tech:/inf/{{ artifact_configs_repo_name }}"
+
+branch:
+  staging: "master"
+  preprod: "release-candidate"
+  production: "release"

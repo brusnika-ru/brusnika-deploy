@@ -1,0 +1,85 @@
+---
+# tasks file for generate deploy file
+
+- ansible.builtin.set_fact:
+    ports: "{{ http_port_default | ansible.builtin.combine(ports, recursive=true) }}"
+  when: 
+    - "ports['http'] is defined"
+    - "ports['http']['from'] is defined"
+    - "ports['http']['to'] is not defined"
+
+- ansible.builtin.set_fact:
+    ports: "{{ api_port_default | ansible.builtin.combine(ports, recursive=true) }}"
+  when: 
+    - "ports['api'] is defined"
+    - "ports['api']['from'] is defined"
+    - "ports['api']['to'] is not defined"
+
+- ansible.builtin.set_fact:
+    ports: "{{ ports | ansible.builtin.combine(http_port_default, api_port_default) }}"
+  when:
+    - "ports['http'] is defined and ports['api'] is defined" 
+    - "ports['http']['to'] is not defined"
+    - "ports['api']['to'] is not defined"
+
+- ansible.builtin.set_fact:
+    ports: "{{ ports | ansible.builtin.combine(http_port_default) }}"
+  when:
+    - "ports['http'] is defined"
+    - "ports['http']['to'] is not defined"
+
+- ansible.builtin.set_fact:
+    ports: "{{ ports | ansible.builtin.combine(api_port_default) }}"
+  when:
+    - "ports['api'] is defined"
+    - "ports['api']['to'] is not defined"
+
+- ansible.builtin.set_fact:
+    containers: "{{ containers_default }}"
+  when:
+    - "containers is not defined"
+
+- ansible.builtin.set_fact:
+    proxy: "{{ proxy | ansible.builtin.combine(proxy_default) }}"
+  when:
+    - "proxy is defined"
+    - "proxy['locations'] is not defined"
+
+- ansible.builtin.set_fact:
+    app_path: "{{ playbook_dir | relpath }}"
+
+- ansible.builtin.set_fact:
+    app_name: "{{ app_path | ansible.builtin.split('/') | last }}"
+  when: app_name is not defined
+
+- ansible.builtin.debug:
+    msg: "Will be deployed to {{ realm }}"
+
+- community.hashi_vault.vault_write:
+    url: "{{ vault_url }}"
+    path: "/sys/policy/{{ realm }}_nomad-client_{{ app_path }}"
+    data: 
+      policy: "path \"{{ realm }}/data/{{ app_path }}\" {\n\tcapabilities = [\"read\"]\n}"
+    auth_method: approle
+    role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
+    secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
+
+- ansible.builtin.template:
+    src: deploy.nomad.j2
+    dest: ./deploy.nomad
+    trim_blocks: False
+
+- ansible.builtin.template:
+    src: site.conf.j2
+    dest: "/etc/angie/http.d/{{ proxy['host'] }}.conf"
+    trim_blocks: False
+  become: yes
+  delegate_to: cld-prx-01
+  notify: reload_angie
+  when: proxy is defined
+
+- ansible.builtin.include_tasks: rdbms.yml
+  loop: "{{ rdbms }}"
+  loop_control:
+    label: "{{ item.host }}"
+  when: rdbms is defined

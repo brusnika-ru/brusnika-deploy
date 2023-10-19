@@ -1,0 +1,16 @@
+- ansible.builtin.set_fact:
+    db_host: "{{ rdbms_servers[item.host] }}"
+
+- ansible.builtin.set_fact:
+    db_port: "{{ item.port }}"
+
+- ansible.builtin.include_tasks: db.yml
+  loop: "{{ item.databases }}"
+  loop_control:
+    loop_var: db
+
+- ansible.builtin.include_tasks: db_user.yml
+  loop: "{{ item.users }}"
+  loop_control:
+    loop_var: user
+    label: "{{ user.name }}"

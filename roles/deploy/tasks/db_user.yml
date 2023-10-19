@@ -1,0 +1,37 @@
+- name: Create readonly group
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: readonly
+    role_attr_flags: NOLOGIN
+    login_port: "{{ db_port }}"
+  delegate_to: "{{ db_host }}"
+
+- name: GRANT pg_read_all_data TO readonly
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    database: postgres
+    type: group
+    objs: pg_read_all_data
+    roles: readonly
+    login_port: "{{ db_port }}"
+  delegate_to: "{{ db_host }}"
+
+- name: Make sure "{{ user.name }}" user are present
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ user.name }}"
+    login_port: "{{ db_port }}"
+  delegate_to: "{{ db_host }}"
+
+- name: Grant "{{ user.member }}" roles to user "{{ user.name }}"
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_membership:
+    group: "{{ user.member | default('') }}"
+    target_role: "{{ user.name }}"
+    login_port: "{{ db_port }}"
+  when: user.member is defined and user.member | length > 0
+  delegate_to: "{{ db_host }}"
