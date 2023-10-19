@@ -3,6 +3,7 @@
 - Генерирует деплой-конфиг для Nomad
 - Создает политику для чтения своих секретов для приложения в Vault
 - Создает конфиг сайта на mainproxy (cld-prx-01)
+- Создает БД в кластере Postgres на сервисе [dbprime](https://gitlab.brusnika.tech/inf/dbprime)
 
 ## Переменные
 **Полужирным** обязательные переменные
@@ -114,6 +115,24 @@
         configs:
         - config.yaml:
             target: myconfig/
+```
+
+### Управление базами данных
+```yaml
+---
+...
+vars:
+  rdbms:
+    - host: general-staging
+      port: 20901
+      databases:
+        - name: brusnika_navigator
+          ext: ['uuid-ossp']
+      users:
+        - name: a.safin
+          member: ['readonly']
+        - name: m.sholomov
+          member: ['brusnika_navigator']
 ```
 
 ## Зависимости
