@@ -44,6 +44,7 @@
   when:
     - "proxy is defined"
     - "proxy['locations'] is not defined"
+    - "containers is not defined"
 
 - ansible.builtin.set_fact:
     app_path: "{{ playbook_dir | relpath }}"
