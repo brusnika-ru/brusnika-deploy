@@ -23,7 +23,7 @@
 | `repo_url.snapshot` | `snapshot-repo.brusnika.tech/brusnika/` | репозиторий стейдж имеджей |
 | `repo_url.release` | `release-repo.brusnika.tech/brusnika/` | репозиторий продакшн имеджей |
 | `repo_url.rc` | `rc-repo.brusnika.tech/brusnika/` | репозиторий релиз-кандидат имеджей |
-| `containers.<container-name>.image` | `"{{ repo_url }}{{ app_name }}-{{ container }}:{{ image_version }}"` | Имедж из которого будет запущен контейнер |
+| `containers.<container-name>.image` | `"{{ repo_url[realm] }}{{ app_name }}-{{ container }}:{{ image_version }}"` | Имедж из которого будет запущен контейнер |
 | `containers.<container-name>.command` | `` | Комманда запуска при старте контейнера |
 | `containers.<container-name>.configs` | `[]` | Список файлов для монтирования в контейнер с хоста. По-умолчанию файлы монтируются в корень, если надо в другое место, то надо передать объект вида {'<имя_файла>': {'target': '<путь_монтирования/>'}}  |
 | `containers.<container-name>.port` | `` | Имя порта для проброса в контейнер |
