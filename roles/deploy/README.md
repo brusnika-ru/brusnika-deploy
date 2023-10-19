@@ -50,6 +50,9 @@
         - config.yaml
     proxy:
       host: operation-monitor.staging.brusnika.tech
+      locations:
+        - name: /api
+          container: backend
 
 ```
 Стандартный сервис + третий контейнер не из нашего репозитория:
@@ -83,12 +86,13 @@
   roles:
     - deploy
   vars:
+    ports:
+      http:
+        to: 8080
     containers:
       airflow:
         image: "bitnami/airflow"
-        ports:
-          http:
-            to: 8080
+        port: http
         resources:
           cpu: 100
           memory: 256
