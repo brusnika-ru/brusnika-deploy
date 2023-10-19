@@ -17,7 +17,7 @@
 | `containers` | `{`<br>`"backend": { "configs": [ "config.yaml" ] },`<br>`"frontend": null`<br>`}` | Контейнеры которые будут запущены |
 | `proxy` | `{}` | Конфигурация проксирования сервиса |
 | **`proxy.host`** | `not defined`  | URL на котором будет опубликован сервис |
-| `proxy.locations[]` | `{`<br>`"name": "/",`<br>`"container": "frontend"`<br>`},{`<br>`"name": "/backend/",`<br>`"container": "backend"`<br> `},{`<br> `"name": "/soket.io",`<br>`"container": "backend"` | Проксирование location на определенный контейнер |
+| `proxy.locations[]` | `{`<br>`"name": "/",`<br>`"container": "frontend"`<br>`},{`<br>`"name": "/backend/",`<br>`"container": "backend"`<br>`}` | Проксирование location на определенный контейнер |
 | `app_name` | `<service folder name>` | Название сервиса. Берется из имени папки, в которой лежит deploy.yaml |
 | `image_version` | `latest` | Версия образов которые будут задеплоены |
 | `repo_url.snapshot` | `snapshot-repo.brusnika.tech/brusnika/` | репозиторий стейдж имеджей |
