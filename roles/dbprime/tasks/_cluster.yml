@@ -201,7 +201,7 @@
         mode: "0640"
       register: pg_hba_generate
 
-    - name: "{{ cluster.pg_name }} | Restart PostgreSQL"
+    - name: "{{ cluster.pg_name }} | Reload PostgreSQL"
       become: true
       become_user: postgres
       ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} reload"
