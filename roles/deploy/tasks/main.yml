@@ -44,7 +44,6 @@
   when:
     - "proxy is defined"
     - "proxy['locations'] is not defined"
-    - "containers is not defined"
 
 - ansible.builtin.set_fact:
     app_path: "{{ playbook_dir | relpath }}"
@@ -60,10 +59,9 @@
     url: "{{ vault_url }}"
     path: "/sys/policy/{{ realm }}_nomad-client_{{ app_path }}"
     data: 
-      policy: "
-        path \"{{ realm }}/data/{{ app_path }}\" {\n\tcapabilities = [\"read\"]\n}
-        path \"{{ realm }}/data/{{ app_path }}_db\" {\n\tcapabilities = [\"read\"]\n}
-        "
+      policy:
+        "path \"{{ realm }}/data/{{ app_path }}\" {\n\tcapabilities = [\"read\"]\n}\n
+        path \"{{ realm }}/data/{{ app_path }}_db\" {\n\tcapabilities = [\"read\"]\n}"
     auth_method: approle
     role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
     secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
