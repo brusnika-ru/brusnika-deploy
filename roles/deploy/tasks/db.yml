@@ -6,7 +6,7 @@
 
 - community.hashi_vault.vault_kv2_get:
     url: "{{ vault_url }}"
-    path: "{{ app_path }}_db"
+    path: "{{ app_path }}_db_{{ db_name }}"
     engine_mount_point: "{{ realm }}"
     auth_method: approle
     role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
@@ -16,7 +16,7 @@
 
 - community.hashi_vault.vault_write:
     url: "{{ vault_url }}"
-    path: "{{ realm }}/data/{{ app_path }}_db"
+    path: "{{ realm }}/data/{{ app_path }}_db_{{ db_name }}"
     data:
       data:
         db_host: "{{ db_host }}"
