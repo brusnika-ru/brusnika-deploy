@@ -91,7 +91,8 @@ host    all             all             127.0.0.1/32            scram-sha-256
 {% for client in postgresql_pg_hba %}
 {{ client.type |default('host') }} {{ client.database |default('all') }} {{ client.user |default('all') }} {{ client.address |default('') }} {{ client.method |default('md5') }} {{ client.options |default(None) }}
 {% endfor %}
-host all all 10.0.0.0/8 ldap ldapserver=cld-dc-01 ldapbasedn="cn=Users,dc=brusnika,dc=ltd" ldapbinddn="CN=pg-svc,OU=Users,OU=Service Users and Groups,DC=brusnika,DC=ltd" ldapbindpasswd="o7JkdxokvY4AR0gVIDD9OL47GANj" ldapsearchattribute="sAMAccountName"
+host    all             all             10.0.0.0/8              scram-sha-256
+host    all             all             10.0.0.0/8              ldap           ldapserver=cld-dc-01 ldapbasedn="cn=Users,dc=brusnika,dc=ltd" ldapbinddn="CN=pg-svc,OU=Users,OU=Service Users and Groups,DC=brusnika,DC=ltd" ldapbindpasswd="o7JkdxokvY4AR0gVIDD9OL47GANj" ldapsearchattribute="sAMAccountName"
 # Allow replication connections from localhost, by a user with the replication privilege.
 local   replication     all                                     peer
 host    replication     all             127.0.0.1/32            scram-sha-256
