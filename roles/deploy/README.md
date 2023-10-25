@@ -70,7 +70,7 @@
         configs:
         - config.yaml
       redis:
-        image: "redis:7"
+        image: "docker://redis:7"
     proxy:
       host: pm-monitor.staging.brusnika.tech
 ```
@@ -90,7 +90,7 @@
         to: 8080
     containers:
       airflow:
-        image: "bitnami/airflow"
+        image: "docker://bitnami/airflow"
         port: http
         resources:
           cpu: 100
