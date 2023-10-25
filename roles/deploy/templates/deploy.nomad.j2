@@ -79,10 +79,12 @@ job "{{ realm }}_{{ app_name }}" {
       {% endif %}
 
       config {
+        {% if 'docker://' not in value.image %}
         auth {
           username = "nomad-svc"
           password = var.repo_password
         }
+        {% endif %}
         force_pull = true
         {% if value.image is defined %}
         image = "{{ value.image }}"
