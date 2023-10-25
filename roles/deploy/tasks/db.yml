@@ -47,6 +47,26 @@
     login_port: "{{ db_port }}"
   delegate_to: "{{ db_host }}"
 
+- ansible.builtin.set_fact:
+    app_path_as_list: "{{ app_path | split('/') }}"
+
+- ansible.builtin.set_fact:
+    db_group: "{{ app_path_as_list | reject('search', app_path_as_list[-1]) | join('-') }}"
+
+- name: Allow connect role "{{ db_name }}" to database "{{ db_name }}" with pg_hba.conf
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_pg_hba:
+    dest: "/etc/postgresql/{{ rdbms.db_version | default(rdbms_default.db_version) }}/{{ db_group }}/pg_hba.conf"
+    contype: host
+    users: "{{ db_name }}"
+    databases: "{{ db_name }}"
+    method: scram-sha-256
+    source: 10.0.0.0/8
+    keep_comments_at_rules: true
+    comment: "this rule from deploy role / db.yml"
+  delegate_to: "{{ db_host }}"
+
 - name: "Add extension to database"
   become: true
   become_user: postgres

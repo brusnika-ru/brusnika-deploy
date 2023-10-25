@@ -58,3 +58,6 @@ branch:
   staging: "master"
   rc: "release-candidate"
   production: "release"
+
+rdbms_default:
+  db_version: 16
