@@ -190,19 +190,3 @@
 
       when: pg_ctl_status_result.rc == 3
   when: pg_role == 'replica'
-
-- block:
-    - name: "{{ cluster.pg_name }} | Generate pg_hba.conf"
-      ansible.builtin.template:
-        src: templates/pg_hba.conf.j2
-        dest: "{{ pg_conf_dir }}/pg_hba.conf"
-        owner: postgres
-        group: postgres
-        mode: "0640"
-      register: pg_hba_generate
-
-    - name: "{{ cluster.pg_name }} | Reload PostgreSQL"
-      become: true
-      become_user: postgres
-      ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} reload"
-      when: pg_hba_generate is changed
