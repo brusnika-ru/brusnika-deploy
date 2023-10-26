@@ -2,7 +2,7 @@
 {% set zone_name = proxy['host'].split('.') | last %}
 {% for container in containers %}
 upstream {{ realm }}_{{ app_name }}-{{ container }} {
-    zone upstream_{{ realm }}_{{ app_name }} 64k;
+    zone upstream_{{ realm }}_{{ app_name }} 128k;
     server service.bru service={{ realm }}-{{ app_name }}-{{ container }} resolve;
 }
 {% endfor %}
