@@ -80,14 +80,13 @@ job "{{ realm }}_{{ app_name }}" {
 
       config {
         force_pull = true
-        {% if value.image is defined %}
-        {% if 'docker://' in value.image %}
-        {% else %}
+        {% if value.image is defined and if 'docker://' not in value.image %}
         auth {
           username = "nomad-svc"
           password = var.repo_password
         }
         {% endif %}
+        {% if value.image is defined %}
         image = "{{ value.image }}"
         {% else %}
         image = "{{ repo_url[realm] }}{{ app_name }}-{{ key }}:{{ image_version }}"
