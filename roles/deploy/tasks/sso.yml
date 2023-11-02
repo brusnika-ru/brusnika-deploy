@@ -31,8 +31,7 @@
     auth_username: ansible-svc
     auth_password: "{{ lookup('ansible.builtin.env', 'KEYCLOAK_AUTH_PASS', default='nobody') }}"
     realm: "{{ sso_realm[realm] }}"
-    #client_id: "{{ app_name }}"
-    client_id: test
+    client_id: "{{ app_name }}"
     secret: "{{ sso_client_secret }}"
     root_url: "https://{{ proxy.host }}/"
     redirect_uris: "{{ sso.redirect_uris }}"
