@@ -85,3 +85,6 @@
   loop_control:
     label: "{{ item.host }}"
   when: rdbms is defined
+
+- ansible.builtin.include_tasks: sso.yml
+  when: sso is defined

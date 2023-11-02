@@ -1,0 +1,42 @@
+- ansible.builtin.set_fact:
+    sso_client_secret: "{{ lookup('ansible.builtin.password', '/dev/null', length=32, chars=['digits','ascii_letters'], seed=app_name) }}"
+
+- community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_url }}"
+    path: "{{ app_path }}_sso"
+    engine_mount_point: "{{ realm }}"
+    auth_method: approle
+    role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
+    secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
+  register: response
+  ignore_errors: yes
+
+- community.hashi_vault.vault_write:
+    url: "{{ vault_url }}"
+    path: "{{ realm }}/data/{{ app_path }}_sso"
+    data:
+      data:
+        sso_realm: "https://login.brusnika.ru/realms/{{ sso_realm[realm] }}/"
+        sso_client_id: "{{ app_name }}"
+        sso_client_secret: "{{ sso_client_secret }}"
+    auth_method: approle
+    role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
+    secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
+  when: response.msg is defined and "Invalid or missing path" in response.msg
+
+- community.general.keycloak_client:
+    state: present
+    auth_keycloak_url: https://login.brusnika.ru
+    auth_realm: master
+    auth_username: ansible-svc
+    auth_password: "{{ lookup('ansible.builtin.env', 'KEYCLOAK_AUTH_PASS', default='nobody') }}"
+    realm: "{{ sso_realm[realm] }}"
+    #client_id: "{{ app_name }}"
+    client_id: test
+    secret: "{{ sso_client_secret }}"
+    root_url: "https://{{ proxy.host }}/"
+    redirect_uris: "{{ sso.redirect_uris }}"
+    web_origins: "{{ sso.web_origins | default(omit) }}"
+  register: result
+
+

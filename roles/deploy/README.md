@@ -161,6 +161,17 @@ vars:
           member: ['brusnika_navigator']
 ```
 
+### Создание клиентов в Keycloak
+```yaml
+---
+...
+vars:
+  sso:
+    redirect_uris:
+      - https://brusnika-navigator.staging.brusnika.tech/*
+      - http://localhost:8888/
+```
+
 ## Зависимости
 * community.hashi_vault
 

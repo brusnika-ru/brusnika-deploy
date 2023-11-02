@@ -61,3 +61,8 @@ branch:
 
 rdbms_default:
   db_version: 16
+
+sso_realm:
+  staging: "Staging"
+  rc: "RC"
+  production: "Brusnika"
