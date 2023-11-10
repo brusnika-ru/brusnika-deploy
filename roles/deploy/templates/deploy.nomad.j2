@@ -98,7 +98,7 @@ job "{{ realm }}_{{ app_name }}" {
             {% if config is mapping -%}
               {% if config.env is not defined -%}
               {% for key, value in config.items() if config.env is undefined -%}  
-              "local/{{ key }}:/{{ value.target }}{{ key }}",
+              "local/{{ key }}:{{ value.target }}/{{ key }}",
               {% endfor -%}
               {% endif %}
             {% else %}
