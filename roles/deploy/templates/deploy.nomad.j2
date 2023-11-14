@@ -66,9 +66,13 @@ job "{{ realm }}_{{ app_name }}" {
           destination = "local/{{ config.env }}"
           env = true
           {% endif -%}
-          {% for key, value in config.items() if config.env is undefined -%}  
+          {% for key, value in config.items() if config.env is undefined -%}
           source = "local/configs/{{ key }}"
           destination = "local/{{ key }}"
+          {% if value.change_mode is defined and value.change_signal is defined %}
+          change_mode   = "{{ value.change_mode }}"
+          change_signal = "{{ value.change_signal }}"
+          {% endif -%}
           {% endfor -%}
         {% else -%}
         source = "local/configs/{{ config }}"
