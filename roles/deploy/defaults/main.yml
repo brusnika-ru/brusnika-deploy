@@ -51,8 +51,8 @@ dns_servers  : ["10.176.0.2"]
 dns_searches : ["brusnika.ltd"]
 
 artifact_private_key_name  : id_gitlab
-artifact_configs_repo_name : nomad
-artifact_configs_repo_uri  : "gitlab.brusnika.tech:/inf/{{ artifact_configs_repo_name }}"
+artifact_configs_repo_name : brusnika
+artifact_configs_repo_uri  : "gitlab.brusnika.tech:/deploy/{{ artifact_configs_repo_name }}"
 
 branch:
   staging: "master"
