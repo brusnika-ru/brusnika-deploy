@@ -89,6 +89,11 @@ job "{{ realm }}_{{ app_name }}" {
           username = "nomad-svc"
           password = var.repo_password
         }
+        {% elif 'docker://' in value.image and value.repo_auth is defined %}
+        auth {
+          username = "{{ value.repo_auth.username }}"
+          password = "{{ value.repo_auth.password }}"
+        }          
         {% endif %}
         {% if value.image is defined %}
         image = "{{ value.image }}"
