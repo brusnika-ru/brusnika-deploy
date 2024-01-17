@@ -146,6 +146,13 @@ job "{{ realm }}_{{ app_name }}" {
         memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources.memory_max) }}
       }
       {% endif %}
+      {%- if value.environment is defined %}
+      env {
+      {% for key, value in value.nvironment.items() -%}
+        {{ key }} = "{{ value }}" 
+      {% endfor %}
+      }
+      {% endif %}
     }   
     {% endfor %}
   }
