@@ -66,3 +66,5 @@ sso_realm:
   staging: "Staging"
   rc: "RC"
   production: "Brusnika"
+
+restart: true
