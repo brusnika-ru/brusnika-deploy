@@ -114,6 +114,9 @@ job "{{ realm }}_{{ app_name }}" {
         {% if value.command is defined %}
         command = "{{ value.command }}"
         {% endif %}
+        {% if value.entrypoint is defined %}
+        entrypoint = "{{ value.entrypoint }}"
+        {% endif %} 
       }
       {% if key == 'backend' %}
       resources {
