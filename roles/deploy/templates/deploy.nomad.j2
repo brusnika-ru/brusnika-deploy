@@ -18,6 +18,12 @@ job "{{ realm }}_{{ app_name }}" {
   }
 
   group "containers" {
+    {% if !restart %}
+    restart {
+      attempts = 0
+      mode     = "fail"
+    }
+    {% endif %}
     network {
       mode = "bridge"
       {% if ports is not defined %}
