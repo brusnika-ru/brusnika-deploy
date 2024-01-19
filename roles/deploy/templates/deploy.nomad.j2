@@ -157,8 +157,10 @@ job "{{ realm }}_{{ app_name }}" {
       {% endif %}
       {%- if value.environment is defined %}
       env {
-      {% for key, value in value.nvironment.items() -%}
+      {% for env in value.environment -%}
+      {% for key,value in env.items() %}
         {{ key }} = "{{ value }}" 
+      {% endfor %}
       {% endfor %}
       }
       {% endif %}
