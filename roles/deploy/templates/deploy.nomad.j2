@@ -18,6 +18,12 @@ job "{{ realm }}_{{ app_name }}" {
   }
 
   group "containers" {
+    {% if restart != true %}
+    restart {
+      attempts = 0
+      mode     = "fail"
+    }
+    {% endif %}
     network {
       mode = "bridge"
       {% if ports is not defined %}
@@ -89,11 +95,6 @@ job "{{ realm }}_{{ app_name }}" {
           username = "nomad-svc"
           password = var.repo_password
         }
-        {% elif 'docker://' in value.image and value.repo_auth is defined %}
-        auth {
-          username = "{{ value.repo_auth.username }}"
-          password = "{{ value.repo_auth.password }}"
-        }          
         {% endif %}
         {% if value.image is defined %}
         image = "{{ value.image }}"
@@ -119,6 +120,9 @@ job "{{ realm }}_{{ app_name }}" {
         {% if value.command is defined %}
         command = "{{ value.command }}"
         {% endif %}
+        {% if value.entrypoint is defined %}
+        entrypoint = "{{ value.entrypoint }}"
+        {% endif %} 
       }
       {% if key == 'backend' %}
       resources {
@@ -149,6 +153,15 @@ job "{{ realm }}_{{ app_name }}" {
         {% endif -%}
         memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources.memory) }}
         memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources.memory_max) }}
+      }
+      {% endif %}
+      {%- if value.environment is defined %}
+      env {
+      {% for env in value.environment -%}
+      {% for key,value in env.items() %}
+        {{ key }} = "{{ value }}" 
+      {% endfor %}
+      {% endfor %}
       }
       {% endif %}
     }   
