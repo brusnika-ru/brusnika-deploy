@@ -1,8 +1,6 @@
 ---
 # tasks file for generate deploy file
 
-- ansible.builtin.import_tasks: _preflight.yml
-
 - ansible.builtin.set_fact:
     ports: "{{ http_port_default | ansible.builtin.combine(ports, recursive=true) }}"
   when: 

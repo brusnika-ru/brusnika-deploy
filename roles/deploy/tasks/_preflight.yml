@@ -1,8 +1,0 @@
----
-- name: Add to known_hosts
-  ansible.builtin.known_hosts:
-    path: "{{ lookup('env','HOME') + '/.ssh/known_hosts' }}"
-    name: "{{ item }}"
-    key: "{{ lookup('pipe', 'ssh-keyscan -T 10 ' + item + ',' + lookup('dig', item)) }}"
-    state: present
-  loop: "{{ groups['all'] }}"
