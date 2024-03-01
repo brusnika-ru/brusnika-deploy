@@ -118,7 +118,7 @@ job "{{ realm }}_{{ app_name }}" {
         ]
         {% endif %}
         {% if value.args is defined %}
-        args = "{{ value.args | to_json }}"
+        args = {{ value.args | to_json }}
         {% endif %}
         {% if value.command is defined %}
         command = "{{ value.command }}"
