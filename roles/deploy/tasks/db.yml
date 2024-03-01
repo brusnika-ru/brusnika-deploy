@@ -12,7 +12,7 @@
     role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
     secret_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_SECRET_ID', default='nobody') }}"
   register: response
-  ignore_errors: yes
+  ignore_errors: true
 
 - community.hashi_vault.vault_write:
     url: "{{ vault_url }}"
@@ -30,7 +30,7 @@
   when: response.msg is defined and "Invalid or missing path" in response.msg
 
 - name: Make sure "{{ db_name }}" user are present
-  become: yes
+  become: true
   become_user: postgres
   community.postgresql.postgresql_user:
     name: "{{ db_name }}"
@@ -39,7 +39,7 @@
   delegate_to: "{{ db_host }}"
 
 - name: Make sure "{{ db_name }}" database are present
-  become: yes
+  become: true
   become_user: postgres
   community.postgresql.postgresql_db:
     name: "{{ db_name }}"
@@ -54,7 +54,7 @@
     db_group: "{{ app_path_as_list | reject('search', app_path_as_list[-1]) | join('-') }}"
 
 - name: Allow connect role "{{ db_name }}" to database "{{ db_name }}" with pg_hba.conf
-  become: yes
+  become: true
   become_user: postgres
   community.postgresql.postgresql_pg_hba:
     dest: "/etc/postgresql/{{ rdbms.db_version | default(rdbms_default.db_version) }}/{{ db_group }}/pg_hba.conf"
@@ -66,6 +66,13 @@
     keep_comments_at_rules: true
     comment: "this rule from deploy role / db.yml"
   delegate_to: "{{ db_host }}"
+  register: allow_connect
+
+- name: Reload config when allow_connect
+  become: true
+  ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ rdbms.db_version | default(rdbms_default.db_version) }} {{ db_group }} reload"  
+  delegate_to: "{{ db_host }}"
+  when: allow_connect.changed
 
 - name: "Add extension to database"
   become: true
