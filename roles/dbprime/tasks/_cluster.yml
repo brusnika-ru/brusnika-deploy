@@ -118,14 +118,31 @@
           become: true
           become_user: postgres
 
-        - name: "{{ cluster.pg_name }} | Generate pg_hba.conf"
-          ansible.builtin.template:
-            src: templates/pg_hba.conf.j2
+        - name: Allow ldap connections for all with pg_hba.conf
+          community.postgresql.postgresql_pg_hba:
             dest: "{{ pg_conf_dir }}/pg_hba.conf"
-            owner: postgres
-            group: postgres
-            mode: "0640"
-          register: pg_hba_generate
+            contype: host
+            databases: all
+            users: all
+            source: 10.0.0.0/8
+            method: ldap
+            options: 'ldapserver=cld-dc-01 ldapbasedn="cn=Users,dc=brusnika,dc=ltd" ldapbinddn="CN=pg-svc,OU=Users,OU=Service Users and Groups,DC=brusnika,DC=ltd" ldapbindpasswd="o7JkdxokvY4AR0gVIDD9OL47GANj" ldapsearchattribute="sAMAccountName"'
+            keep_comments_at_rules: true
+            comment: "this rule from role dbprime/_cluster.yml"
+          register: pg_hba_generate_ldap
+
+        - name: Allow replica connections with pg_hba.conf
+          community.postgresql.postgresql_pg_hba:
+            dest: "{{ pg_conf_dir }}/pg_hba.conf"
+            contype: host
+            databases: replication
+            users: replicator
+            source: "{{ hostvars[item].ansible_all_ipv4_addresses[0] }}/32"
+            method: scram-sha-256
+            keep_comments_at_rules: true
+            comment: "this rule from role dbprime/_cluster.yml"
+          loop: "{{ groups[group_names[0] + '_replica'] }}"
+          when: replica_enabled
 
         - name: "{{ cluster.pg_name }} | Restart PostgreSQL"
           become: true
