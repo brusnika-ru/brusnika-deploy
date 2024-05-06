@@ -26,7 +26,7 @@
 
 - community.general.keycloak_client:
     state: present
-    auth_keycloak_url: {{ keycloak_url }}
+    auth_keycloak_url: "{{ keycloak_url }}"
     auth_realm: master
     auth_username: ansible-svc
     auth_password: "{{ lookup('ansible.builtin.env', 'KEYCLOAK_AUTH_PASS', default='nobody') }}"
