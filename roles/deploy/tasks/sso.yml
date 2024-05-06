@@ -16,7 +16,7 @@
     path: "{{ realm }}/data/{{ app_path }}_sso"
     data:
       data:
-        sso_realm: "https://login.brusnika.ru/realms/{{ sso_realm[realm] }}/"
+        sso_realm: "{{ keycloak_url }}/realms/{{ sso_realm[realm] }}/"
         sso_client_id: "{{ app_name }}"
         sso_client_secret: "{{ sso_client_secret }}"
     auth_method: approle
@@ -26,7 +26,7 @@
 
 - community.general.keycloak_client:
     state: present
-    auth_keycloak_url: https://login.brusnika.ru
+    auth_keycloak_url: {{ keycloak_url }}
     auth_realm: master
     auth_username: ansible-svc
     auth_password: "{{ lookup('ansible.builtin.env', 'KEYCLOAK_AUTH_PASS', default='nobody') }}"
