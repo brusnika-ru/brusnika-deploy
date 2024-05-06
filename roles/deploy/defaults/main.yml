@@ -71,5 +71,6 @@ sso_realm:
   rc: "RC"
   production: "Brusnika"
   brusnica: "production"
+keycloak_url: https://login.brusnika.ru
 
 restart: true
