@@ -1,4 +1,5 @@
 vault_url: https://vault.brusnika.tech
+keycloak_url: https://login.brusnika.ru
 rdbms_servers:
   general-staging: cld-gdb-stg-01
   general-rc: cld-gdb-rc-01
