@@ -76,7 +76,7 @@
     dest: "/etc/angie/http.d/{{ proxy['host'] }}.conf"
     trim_blocks: False
   become: yes
-  delegate_to: cld-prx-01
+  delegate_to: "{{ groups['proxy'][0] }}"
   notify: reload_angie
   when: proxy is defined
 
