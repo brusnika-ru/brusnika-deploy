@@ -10,6 +10,8 @@ datacenter:
     - "nomad-gld-rc-1"
   production:
     - "nomad-gld-1"
+  brusnica:
+    - "tur-1"
 
 http_port_default:
   http:
@@ -36,6 +38,7 @@ repo_url:
   staging: "snapshot-repo.brusnika.tech/brusnika/"
   rc: "rc-repo.brusnika.tech/brusnika/"
   production: "release-repo.brusnika.tech/brusnika/"
+  brusnica: "release-repo.brusnika.tech/brusnika/"
 
 resources:
   cpu        : 10
@@ -58,6 +61,7 @@ branch:
   staging: "master"
   rc: "release-candidate"
   production: "release"
+  brusnica: "release"
 
 rdbms_default:
   db_version: 16
@@ -66,5 +70,6 @@ sso_realm:
   staging: "Staging"
   rc: "RC"
   production: "Brusnika"
+  brusnica: "production"
 
 restart: true
