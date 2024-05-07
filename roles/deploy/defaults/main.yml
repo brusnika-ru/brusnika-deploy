@@ -74,3 +74,5 @@ sso_realm:
 keycloak_url: https://login.brusnika.ru
 
 restart: true
+
+domain_name: brusnika
