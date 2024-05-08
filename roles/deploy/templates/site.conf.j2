@@ -3,7 +3,7 @@
 {% for container in containers %}
 upstream {{ realm }}_{{ app_name }}-{{ container }} {
     zone upstream_{{ realm }}_{{ app_name }} 128k;
-    server service.bru service={{ realm }}-{{ app_name }}-{{ container }} resolve;
+    server {{ consul_zone }} service={{ realm }}-{{ app_name }}-{{ container }} resolve;
 }
 {% endfor %}
 server {

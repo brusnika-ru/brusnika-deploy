@@ -76,3 +76,4 @@ keycloak_url: https://login.brusnika.ru
 restart: true
 
 domain_name: brusnika
+consul_zone: service.bru
