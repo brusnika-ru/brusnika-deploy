@@ -25,7 +25,6 @@ job "{{ realm }}_{{ app_name }}" {
     }
     {% endif %}
     network {
-      mode = "bridge"
       {% if ports is not defined %}
         {% set ports = dict(http_port_default, **api_port_default) %}
       {% endif %}
