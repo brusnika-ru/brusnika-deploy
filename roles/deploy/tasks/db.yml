@@ -52,6 +52,11 @@
 
 - ansible.builtin.set_fact:
     db_group: "{{ app_path_as_list | reject('search', app_path_as_list[-1]) | join('-') }}"
+  when: db.group is not defined
+
+- ansible.builtin.set_fact:
+    db_group: "{{ db.group }}"
+  when: db.group is defined
 
 - name: Allow connect role "{{ db_name }}" to database "{{ db_name }}" with pg_hba.conf
   become: true
