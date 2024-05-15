@@ -10,6 +10,7 @@
   loop_control:
     loop_var: cluster
     label: "{{ cluster.pg_name }}"
+  when: cluster.disk_quota is not undefined
   tags: ['filesystem']
 
 - ansible.builtin.include_tasks: _cluster.yml
