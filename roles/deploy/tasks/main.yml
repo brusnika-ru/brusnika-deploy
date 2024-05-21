@@ -61,6 +61,7 @@
     data: 
       policy:
         "path \"{{ realm }}/data/{{ app_path }}\" {\n\tcapabilities = [\"read\"]\n}\n
+        path \"{{ realm }}/data/{{ app_path }}/*\" {\n\tcapabilities = [\"read\"]\n}\n
         path \"{{ realm }}/data/{{ app_path }}_*\" {\n\tcapabilities = [\"read\"]\n}"
     auth_method: approle
     role_id: "{{ lookup('ansible.builtin.env', 'VAULT_ROLE_ID', default='nobody') }}"
