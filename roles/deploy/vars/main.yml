@@ -3,4 +3,5 @@ rdbms_servers:
   general-staging: cld-gdb-stg-01
   general-rc: cld-gdb-rc-01
   core-staging: cld-cdb-stg-01
+  sales-staging: cld-sdb-stg-01
   tur-prod: tur-db-01
