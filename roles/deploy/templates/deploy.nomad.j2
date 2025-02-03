@@ -144,16 +144,19 @@ job "{{ realm }}_{{ app_name }}" {
       }
       {% else %}
       resources {
-        {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
+		    {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
         cpu        = {{ value.resources['cpu'] }}
         {% elif value.resources['cores'] is defined and value.resources['cpu'] is defined %}
         cpu        = {{ resources.cpu }}
         {% elif value.resources['cores'] is not defined and value.resources['cpu'] is not defined %}
         cpu        = {{ resources.cpu }}
         {% endif -%}
-        {% if value.resources is defined and value.resources['cores'] is defined and value.resources['cpu'] is not defined %}
-        cores      = {{ value.resources['cores'] }}
-        {% endif -%}
+        {% if value.resources is defined and value.resources['cores'] is defined %}
+        cores = {{ value.resources['cores'] }}
+        {% else %}
+		    cores = 1
+		    {% endif %}
+		
         memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources.memory) }}
         memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources.memory_max) }}
       }
