@@ -13,6 +13,10 @@ server {
     ssl_certificate     /etc/angie/ssl/{{ domain_name }}.{{ zone_name }}.cer;
     ssl_certificate_key /etc/angie/ssl/{{ domain_name }}.{{ zone_name }}.key;
 
+    if ($request_uri ~ "\.\./") {
+        return 403;
+    }
+
     {% for location in proxy['locations'] -%}
     {% if location['name'] == '/' or location['noend'] is defined -%}
         {% set end = '' %}
