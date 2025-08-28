@@ -25,6 +25,14 @@
       register: pg_createcluster_result
       failed_when: pg_createcluster_result.rc != 0
 
+    - name: "{{ cluster.pg_name }} | Create symlink for systemd service discovery"
+      ansible.builtin.file:
+        src: "/etc/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}"
+        dest: "/etc/postgresql/{{ pg_ver }}-{{ cluster.pg_name }}"
+        state: link
+        owner: root
+        group: root
+
     - name: "{{ cluster.pg_name }} | Config listiner"
       ansible.builtin.copy:
         dest: "{{ pg_conf_dir }}/conf.d/00_listener.conf"
