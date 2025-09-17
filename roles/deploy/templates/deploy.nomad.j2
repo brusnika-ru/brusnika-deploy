@@ -1,3 +1,4 @@
+cat deploy.nomad.j2
 variable "repo_password" {
   type = string
 }
@@ -5,18 +6,14 @@ variable "repo_password" {
 job "{{ realm }}_{{ app_name }}" {
   region      = "{{ region }}"
   datacenters = {{ datacenter[realm] | to_json }}
-  
   type = "service"
-  
   # for redeploy without changes in this file
   meta {
     run_uuid = "${uuidv4()}"
   }
-  
   vault {
     policies = ["{{ realm }}_nomad-client_{{ app_path }}"]
   }
-
   group "containers" {
     {% if restart != true %}
     restart {
@@ -38,12 +35,9 @@ job "{{ realm }}_{{ app_name }}" {
       }
       {% endfor %}
     }
-
     {% for key, value in containers.items() -%}
     task "{{ key }}" {
       driver = "podman"
-
-# --- НАЧАЛО ИЗМЕНЕНИЙ ---
       {% set service_ports = [] %}
       {% if key == 'frontend' %}
         {% set service_ports = ['http'] %}
@@ -56,30 +50,21 @@ job "{{ realm }}_{{ app_name }}" {
           {% set service_ports = value.port %}
         {% endif %}
       {% endif %}
-
       {% for port_name in service_ports %}
       service {
-        # ID должен быть уникальным в рамках задачи. Используем имя порта для этого.
-        id = "{{ realm }}-{{ app_name }}-{{ key }}-{{ port_name }}"
-
-        # Имя в Consul будет одинаковым для всех портов этого контейнера.
-        name = "{{ realm }}-{{ app_name }}-{{ key }}"
-
+        name = "{{ realm }}-{{ app_name }}-{{ key }}-{{ port_name }}"
         address_mode = "host"
         port = "{{ port_name }}"
-
         meta {
           container-name = "{{ key }}"
+          port-name = "{{ port_name }}"
         }
       }
       {% endfor %}
-      # --- КОНЕЦ ИЗМЕНЕНИЙ ---
-
       {% if value.configs is defined %}
       artifact {
         source = "git::git@{{ artifact_configs_repo_uri }}//{{ app_path }}/configs"
         destination = "local/configs"
-        
         options {
           sshkey = "${base64encode(file(pathexpand("~/.ssh/{{ artifact_private_key_name }}")))}"
           ref = {{ branch[realm] | to_json }}
@@ -108,7 +93,6 @@ job "{{ realm }}_{{ app_name }}" {
       }
       {% endfor %}
       {% endif %}
-
       config {
         force_pull = true
         {% if (value.image is defined and 'docker://' not in value.image) or value.image is undefined %}
@@ -122,7 +106,6 @@ job "{{ realm }}_{{ app_name }}" {
         {% else %}
         image = "{{ repo_url[realm] }}{{ app_name }}-{{ key }}:{{ image_version }}"
         {% endif %}
-
         {% if value.configs is defined %}
         volumes = [
           {% for config in value.configs %}
@@ -146,47 +129,23 @@ job "{{ realm }}_{{ app_name }}" {
         {% endif %}
         {% if value.entrypoint is defined %}
         entrypoint = "{{ value.entrypoint }}"
-        {% endif %} 
+        {% endif %}
       }
-      {% if key == 'backend' %}
       resources {
-        {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
+        {%- if value.resources is defined and value.resources['cpu'] is defined %}
         cpu        = {{ value.resources['cpu'] }}
-        {% elif value.resources['cores'] is defined and value.resources['cpu'] is defined %}
-        cpu        = {{ resources_backend.cpu }}
-        {% elif value.resources['cores'] is not defined and value.resources['cpu'] is not defined %}
-        cpu        = {{ resources_backend.cpu }}
-        {% endif -%}
-        {% if value.resources is defined and value.resources['cores'] is defined and value.resources['cpu'] is not defined %}
-        cores      = {{ value.resources['cores'] }}
-        {% endif -%}
-        memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources_backend.memory) }}
-        memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources_backend.memory_max) }}
+        {%- else %}
+        cpu        = 128
+        {%- endif %}
+        
+        memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], 1024) }}
+        memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], 2048) }}
       }
-      {% else %}
-      resources {
-		    {%- if value.resources is defined and value.resources['cpu'] is defined and value.resources['cores'] is not defined %}
-        cpu        = {{ value.resources['cpu'] }}
-        {% elif value.resources['cores'] is defined and value.resources['cpu'] is defined %}
-        cpu        = {{ resources.cpu }}
-        {% elif value.resources['cores'] is not defined and value.resources['cpu'] is not defined %}
-        cpu        = {{ resources.cpu }}
-        {% endif -%}
-        {% if value.resources is defined and value.resources['cores'] is defined %}
-        cores = {{ value.resources['cores'] }}
-        {% else %}
-		    cores = 1
-		    {% endif %}
-		
-        memory     = {{ (value.resources is defined and value.resources['memory'] is defined) | ternary(value.resources['memory'], resources.memory) }}
-        memory_max = {{ (value.resources is defined and value.resources['memory_max'] is defined) | ternary(value.resources['memory_max'], resources.memory_max) }}
-      }
-      {% endif %}
       {%- if value.environment is defined %}
       env {
       {% for env in value.environment -%}
       {% for key,value in env.items() %}
-        {{ key }} = "{{ value }}" 
+        {{ key }} = "{{ value }}"
       {% endfor %}
       {% endfor %}
       }
