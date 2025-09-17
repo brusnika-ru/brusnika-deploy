@@ -1,16 +1,17 @@
-cat deploy.nomad.j2
 variable "repo_password" {
   type = string
 }
-
 job "{{ realm }}_{{ app_name }}" {
   region      = "{{ region }}"
   datacenters = {{ datacenter[realm] | to_json }}
+  
   type = "service"
+  
   # for redeploy without changes in this file
   meta {
     run_uuid = "${uuidv4()}"
   }
+  
   vault {
     policies = ["{{ realm }}_nomad-client_{{ app_path }}"]
   }
@@ -38,21 +39,38 @@ job "{{ realm }}_{{ app_name }}" {
     {% for key, value in containers.items() -%}
     task "{{ key }}" {
       driver = "podman"
-      {% set service_ports = [] %}
       {% if key == 'frontend' %}
-        {% set service_ports = ['http'] %}
+      service {
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
+        address_mode = "host"
+        port = "http"
+        meta {
+          container-name = "{{ key }}"
+        }
+      }
       {% elif key == 'backend' %}
-        {% set service_ports = ['api'] %}
+      service {
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
+        address_mode = "host"
+        port = "api"
+        meta {
+          container-name = "{{ key }}"
+        }
+      }
       {% elif value.port is defined %}
         {% if value.port is string %}
-          {% set service_ports = [value.port] %}
-        {% else %}
-          {% set service_ports = value.port %}
-        {% endif %}
-      {% endif %}
-      {% for port_name in service_ports %}
       service {
-        name = "{{ realm }}-{{ app_name }}-{{ key }}-{{ port_name }}"
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
+        address_mode = "host"
+        port = "{{ value.port }}"
+        meta {
+          container-name = "{{ key }}"
+        }
+      }
+        {% else %}
+          {% for port_name in value.port %}
+      service {
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
         address_mode = "host"
         port = "{{ port_name }}"
         meta {
@@ -60,11 +78,14 @@ job "{{ realm }}_{{ app_name }}" {
           port-name = "{{ port_name }}"
         }
       }
-      {% endfor %}
+          {% endfor %}
+        {% endif %}
+      {% endif %}
       {% if value.configs is defined %}
       artifact {
         source = "git::git@{{ artifact_configs_repo_uri }}//{{ app_path }}/configs"
         destination = "local/configs"
+        
         options {
           sshkey = "${base64encode(file(pathexpand("~/.ssh/{{ artifact_private_key_name }}")))}"
           ref = {{ branch[realm] | to_json }}
@@ -129,11 +150,13 @@ job "{{ realm }}_{{ app_name }}" {
         {% endif %}
         {% if value.entrypoint is defined %}
         entrypoint = "{{ value.entrypoint }}"
-        {% endif %}
+        {% endif %} 
       }
       resources {
         {%- if value.resources is defined and value.resources['cpu'] is defined %}
         cpu        = {{ value.resources['cpu'] }}
+        {%- elif value.resources is defined and value.resources['cores'] is defined %}
+        cores      = {{ value.resources['cores'] }}
         {%- else %}
         cpu        = 128
         {%- endif %}
@@ -145,7 +168,7 @@ job "{{ realm }}_{{ app_name }}" {
       env {
       {% for env in value.environment -%}
       {% for key,value in env.items() %}
-        {{ key }} = "{{ value }}"
+        {{ key }} = "{{ value }}" 
       {% endfor %}
       {% endfor %}
       }
