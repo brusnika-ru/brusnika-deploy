@@ -40,20 +40,39 @@ job "{{ realm }}_{{ app_name }}" {
     {% for key, value in containers.items() -%}
     task "{{ key }}" {
       driver = "podman"
-      service {
-        name = "{{ realm }}-{{ app_name }}-{{ key }}"
-        address_mode = "host"
-        {% if key == 'frontend' %}
-        port = "http"
-        {% elif key == 'backend' %}
-        port = "api"
+
+# --- НАЧАЛО ИЗМЕНЕНИЙ ---
+      {% set service_ports = [] %}
+      {% if key == 'frontend' %}
+        {% set service_ports = ['http'] %}
+      {% elif key == 'backend' %}
+        {% set service_ports = ['api'] %}
+      {% elif value.port is defined %}
+        {% if value.port is string %}
+          {% set service_ports = [value.port] %}
         {% else %}
-        port = {{ value.port | d('', True) | to_json }}
+          {% set service_ports = value.port %}
         {% endif %}
+      {% endif %}
+
+      {% for port_name in service_ports %}
+      service {
+        # ID должен быть уникальным в рамках задачи. Используем имя порта для этого.
+        id = "{{ realm }}-{{ app_name }}-{{ key }}-{{ port_name }}"
+
+        # Имя в Consul будет одинаковым для всех портов этого контейнера.
+        name = "{{ realm }}-{{ app_name }}-{{ key }}"
+
+        address_mode = "host"
+        port = "{{ port_name }}"
+
         meta {
           container-name = "{{ key }}"
         }
       }
+      {% endfor %}
+      # --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
       {% if value.configs is defined %}
       artifact {
         source = "git::git@{{ artifact_configs_repo_uri }}//{{ app_path }}/configs"
