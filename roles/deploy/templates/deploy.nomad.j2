@@ -31,8 +31,10 @@ job "{{ realm }}_{{ app_name }}" {
       {% endif %}
       {% for key, value in ports.items() %}
       port "{{ key }}" {
-        {% if value.from is defined %}static = {{ value.from }}{% endif %}
-        {% if value.to is defined %}to     = {{ value.to }}{% endif %}
+        {% if value.static is defined %}static = {{ value.static }}
+        {% elif value.from is defined %}static = {{ value.from }}
+        {% endif %}
+        {% if value.to is defined and value.static is not defined and value.from is not defined %}to = {{ value.to }}{% endif %}
       }
       {% endfor %}
     }
