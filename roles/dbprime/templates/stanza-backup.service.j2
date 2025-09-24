@@ -1,7 +1,11 @@
 [Unit]
-Description=Perform backup with PgBackRest for {{ unit }}
+Description=pgBackRest backup for {{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}
+After=postgresql@{{ pg_ver }}-{{ cluster.pg_name }}.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup --type {{ type }}
-SyslogIdentifier=pgbackrest
+ExecStart=/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} --type={{ item.type }} backup
+RemainAfterExit=yes
+User=postgres
+Group=postgres
+Environment=PGDATA={{ pg_data_dir }}

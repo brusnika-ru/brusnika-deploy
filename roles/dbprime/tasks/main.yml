@@ -13,6 +13,89 @@
   when: cluster.disk_quota is not undefined
   tags: ['filesystem']
 
+- name: Get postgres passwd entry to determine home
+  ansible.builtin.command: getent passwd postgres
+  register: passwd_entry
+  changed_when: false
+  tags: ['ssh-keys']
+
+- name: Set postgres home fact
+  ansible.builtin.set_fact:
+    pg_home: "{{ passwd_entry.stdout.split(':')[5] }}"
+  tags: ['ssh-keys']
+
+- name: Ensure postgres .ssh exists
+  ansible.builtin.file:
+    path: "{{ pg_home }}/.ssh"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+  tags: ['ssh-keys']
+
+- name: Generate SSH keypair for postgres if missing (openssh_keypair)
+  ansible.builtin.openssh_keypair:
+    path: "{{ pg_home }}/.ssh/id_rsa"
+    type: rsa
+    size: 2048
+    owner: postgres
+    group: postgres
+    mode: '0600'
+    force: false
+  register: keypair_result
+  tags: ['ssh-keys']
+
+- name: Read public key (slurp)
+  ansible.builtin.slurp:
+    src: "{{ pg_home }}/.ssh/id_rsa.pub"
+  register: pubkey_slurp
+  tags: ['ssh-keys']
+
+- name: Save decoded public key into host fact (pg_pub_key)
+  ansible.builtin.set_fact:
+    pg_pub_key: "{{ pubkey_slurp.content | b64decode }}"
+  tags: ['ssh-keys']
+
+- name: Distribute postgres public keys of play hosts to authorized_keys on each host
+  ansible.builtin.authorized_key:
+    user: postgres
+    key: "{{ hostvars[item].pg_pub_key }}"
+    state: present
+    manage_dir: yes
+    path: "{{ pg_home }}/.ssh/authorized_keys"
+  loop: "{{ ansible_play_hosts_all }}"
+  when:
+    - item != inventory_hostname
+    - hostvars[item].pg_pub_key is defined
+  loop_control:
+    label: "{{ item }}"
+  tags: ['ssh-keys']
+
+- name: Check if systemd unit file exists
+  ansible.builtin.stat:
+    path: /lib/systemd/system/postgresql@.service
+  register: postgresql_unit_stat
+  tags: ['systemd']
+
+- name: Replace %I with %i in systemd unit file
+  ansible.builtin.replace:
+    path: /lib/systemd/system/postgresql@.service
+    regexp: '%I'
+    replace: '%i'
+    backup: yes
+  register: unit_replace_result
+  when: postgresql_unit_stat.stat.exists
+  tags: ['systemd']
+
+- name: Reload systemd daemon if unit file changed
+  ansible.builtin.command: systemctl daemon-reload
+  become: yes
+  when:
+    - postgresql_unit_stat.stat.exists
+    - unit_replace_result is defined
+    - unit_replace_result.changed
+  tags: ['systemd']
+
 - ansible.builtin.include_tasks: _cluster.yml
   loop: "{{ clusters }}"
   loop_control:

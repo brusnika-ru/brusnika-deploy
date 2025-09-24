@@ -1,5 +1,4 @@
----
-- name: "{{ cluster.pg_name }} | Ensure PostgreSQL data directory is exists"
+- name: "{{ cluster.pg_name }} | Ensure PostgreSQL data directory exists"
   ansible.builtin.file:
     path: "{{ pg_data_dir }}"
     owner: postgres
@@ -7,38 +6,274 @@
     state: directory
     mode: "0700"
 
-- name: "{{ cluster.pg_name }} | Ensure the PostgreSQL config files is exists"
+- name: "{{ cluster.pg_name }} | Ensure the PostgreSQL config files exist"
   ansible.builtin.stat:
     path: "{{ pg_conf_dir }}/postgresql.conf"
   register: postgresql_conf_file
 
 - block:
-    - name: "{{ cluster.pg_name }} | Generate default PostgreSQL config files"
-      become: true
-      become_user: postgres
-      ansible.builtin.command: >
-        /usr/bin/pg_createcluster {{ pg_ver }} {{ cluster.pg_name }}
-        -d {{ pg_data_dir }}
-        -p {{ cluster.pg_port }}
-        -e {{ pg_encoding }}
-        --locale {{ pg_locale }}
-      register: pg_createcluster_result
-      failed_when: pg_createcluster_result.rc != 0
+  - name: "{{ cluster.pg_name }} | Generate default PostgreSQL config files"
+    become: true
+    become_user: postgres
+    ansible.builtin.command: >
+      /usr/bin/pg_createcluster {{ pg_ver }} {{ cluster.pg_name }}
+      -d {{ pg_data_dir }}
+      -p {{ cluster.pg_port }}
+      -e {{ pg_encoding }}
+      --locale {{ pg_locale }}
+    register: pg_createcluster_result
+    failed_when: pg_createcluster_result.rc != 0
 
-    - name: "{{ cluster.pg_name }} | Create symlink for systemd service discovery"
-      ansible.builtin.file:
-        src: "/etc/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}"
-        dest: "/etc/postgresql/{{ pg_ver }}-{{ cluster.pg_name }}"
-        state: link
-        owner: root
-        group: root
+  - name: "{{ cluster.pg_name }} | Create symlink for systemd service discovery"
+    ansible.builtin.file:
+      src: "/etc/postgresql/{{ pg_ver }}/{{ cluster.pg_name }}"
+      dest: "/etc/postgresql/{{ pg_ver }}-{{ cluster.pg_name }}"
+      state: link
+      owner: root
+      group: root
 
-    - name: "{{ cluster.pg_name }} | Config listiner"
-      ansible.builtin.copy:
-        dest: "{{ pg_conf_dir }}/conf.d/00_listener.conf"
-        content: |
-          listen_addresses = 'localhost,{{ ansible_eth0.ipv4.address }}'
+  - name: "{{ cluster.pg_name }} | Config listener"
+    ansible.builtin.copy:
+      dest: "{{ pg_conf_dir }}/conf.d/00_listener.conf"
+      content: |
+        listen_addresses = 'localhost,{{ (ansible_all_ipv4_addresses | first) | default(ansible_default_ipv4.address) }}'
+
+  - name: "{{ cluster.pg_name }} | Ensure SSL subdir exists in PGDATA"
+    ansible.builtin.file:
+      path: "{{ pg_data_dir }}/ssl"
+      owner: postgres
+      group: postgres
+      state: directory
+      mode: "0700"
+    tags:
+    - ssl
+
+  - name: "{{ cluster.pg_name }} | Create openssl SAN config for this host"
+    ansible.builtin.copy:
+      dest: "{{ pg_data_dir }}/ssl/san.cnf"
+      owner: postgres
+      group: postgres
+      mode: "0644"
+      content: |
+        [ req ]
+        default_bits = 2048
+        prompt = no
+        default_md = sha256
+        distinguished_name = dn
+        req_extensions = v3_req
+
+        [ dn ]
+        CN = {{ inventory_hostname }}
+
+        [ v3_req ]
+        subjectAltName = @alt_names
+
+        [ alt_names ]
+        DNS.1 = {{ inventory_hostname }}
+        {% if ansible_fqdn is defined %}
+        DNS.2 = {{ ansible_fqdn }}
+        {% endif %}
+        IP.1 = {{ (ansible_all_ipv4_addresses | first) | default(ansible_default_ipv4.address) }}
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Generate server private key and self-signed certificate if missing"
+    become_user: postgres
+    ansible.builtin.command: >
+      openssl req -x509 -nodes -days {{ ssl_cert_days | default(3650) }}
+      -newkey rsa:2048
+      -keyout "{{ pg_data_dir }}/ssl/server.key"
+      -out "{{ pg_data_dir }}/ssl/server.crt"
+      -config "{{ pg_data_dir }}/ssl/san.cnf"
+      -extensions v3_req
+    args:
+      creates: "{{ pg_data_dir }}/ssl/server.crt"
+    register: openssl_generate
+    failed_when: openssl_generate.rc != 0
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Ensure ownership and permissions for ssl/server files"
+    ansible.builtin.file:
+      path: "{{ item.path }}"
+      owner: postgres
+      group: postgres
+      mode: "{{ item.mode }}"
+    loop:
+      - { path: "{{ pg_data_dir }}/ssl/server.key", mode: "0600" }
+      - { path: "{{ pg_data_dir }}/ssl/server.crt", mode: "0644" }
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Copy server.crt and server.key from ssl/ to PGDATA root (remote copy)"
+    ansible.builtin.copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: postgres
+      group: postgres
+      mode: "{{ item.mode }}"
+      remote_src: yes
+    loop:
+      - { src: "{{ pg_data_dir }}/ssl/server.crt", dest: "{{ pg_data_dir }}/server.crt", mode: "0644" }
+      - { src: "{{ pg_data_dir }}/ssl/server.key", dest: "{{ pg_data_dir }}/server.key", mode: "0600" }
+    loop_control:
+      label: "{{ item.src }}"
+    tags:
+      - ssl
+
+  # **Validate per-host server.crt and attempt to fix literal "\n" if necessary**
+
+  - name: "{{ cluster.pg_name }} | Validate local server.crt (per host)"
+    ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
+    register: server_cert_check
+    failed_when: false
+    changed_when: false
+    become: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | If invalid show head of server.crt for debug"
+    ansible.builtin.command: "sed -n '1,120p' {{ pg_data_dir }}/server.crt"
+    register: bad_cert_head
+    failed_when: false
+    changed_when: false
+    when: server_cert_check.rc != 0
+    become: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Attempt to fix server.crt by replacing literal \n sequences (if invalid)"
+    ansible.builtin.shell: "perl -0777 -pe 's/ \\n/ \n/g; s/ \r//g' -i {{ pg_data_dir }}/server.crt"
+    when: server_cert_check.rc != 0
+    register: fix_result
+    failed_when: false
+    changed_when: fix_result.rc == 0
+    become: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Re-validate server.crt after fix (per host)"
+    ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
+    register: server_cert_check2
+    failed_when: false
+    changed_when: false
+    when: server_cert_check.rc != 0
+    become: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Set pg_has_server_cert fact"
+    ansible.builtin.set_fact:
+      pg_has_server_cert: "{{ (server_cert_check.rc == 0) or (server_cert_check2 is defined and server_cert_check2.rc == 0) }}"
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Debug cert issues when fix failed"
+    ansible.builtin.debug:
+      msg:
+        - "server.crt invalid on host {{ inventory_hostname }} and automatic fix failed (see bad_cert_head)"
+        - "{{ bad_cert_head.stdout_lines | default([]) }}"
+    when: not pg_has_server_cert
+    tags:
+      - ssl
+
+  # **Collect only from hosts with valid server.crt (run_once per cluster)**
+
+  - name: "{{ cluster.pg_name }} | Collect server.crt from hosts that have valid cert (delegated, run_once)"
+    ansible.builtin.slurp:
+      src: "{{ pg_data_dir }}/server.crt"
+    register: slurped_certs
+    run_once: true
+    loop: "{{ ansible_play_hosts_all }}"
+    loop_control:
+      label: "{{ item }}"
+    delegate_to: "{{ item }}"
+    when: hostvars[item].pg_has_server_cert | default(false)
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Extract PEM blocks from collected certs (run_once)"
+    ansible.builtin.set_fact:
+      combined_root_crt_raw: >-
+        {{  
+        (slurped_certs.results | default([]))  
+        | map(attribute='content')  
+        | map('b64decode')  
+        | map('replace','\r','')  
+        | map('regex_findall','(?ms)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----')  
+        | flatten  
+        | map('trim')  
+        | reject('equalto','')  
+        | list  
+        | join('\n\n')  
+        }}
+    run_once: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Normalize any remaining literal escapes in combined_root_crt (run_once)"
+    ansible.builtin.set_fact:
+      combined_root_crt: >-
+        {{  
+        (combined_root_crt_raw | default(''))  
+        | replace(' \n','\n')  
+        | replace(' \r','')  
+        }}
+    run_once: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Quick debug: first 6 lines of combined_root_crt (run_once)"
+    ansible.builtin.debug:
+      msg: "{{ (combined_root_crt.splitlines()[:6]) | join('\n') }}"
+    run_once: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Fail if no PEM blocks found (run_once)"
+    ansible.builtin.fail:
+      msg: "No valid PEM blocks found when building combined root.crt — aborting. Check per-host server.crt contents."
+    when:
+      - combined_root_crt is not defined
+      - combined_root_crt | default('') | regex_search('-----BEGIN CERTIFICATE-----') == none
+    run_once: true
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Write combined root.crt to PGDATA on all hosts"
+    ansible.builtin.copy:
+      dest: "{{ pg_data_dir }}/root.crt"
+      content: "{{ combined_root_crt | default('') }}"
+      owner: postgres
+      group: postgres
+      mode: "0644"
+    when: combined_root_crt is defined and combined_root_crt != ''
+    tags:
+      - ssl
+
+  - name: "{{ cluster.pg_name }} | Normalize PEM blocks in root.crt (fix literal \\n)"
+    ansible.builtin.shell: |
+      perl -0777 -pe 's/\\n/\n/g; s/\\r//g' -i "{{ pg_data_dir }}/root.crt"
+    become: true
+    when: combined_root_crt is defined and combined_root_crt != ''
+    tags:
+      - ssl
   when: not postgresql_conf_file.stat.exists
+
+# **TLS certs for PostgreSQL replication (per-instance, stored under PGDATA of this instance)**
+
+
+- name: "Ensure pgbackrest global config is created"
+  ansible.builtin.template:
+    src: templates/pgbackrest.conf.j2
+    dest: "/etc/pgbackrest/pgbackrest.conf"
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  become: true
+  when: pgbackrest_repo_s3_bucket is defined and pgbackrest_repo_s3_bucket != ''
+  tags:
+    - pgbackrest
 
 - name: "{{ cluster.pg_name }} | Add config stanza"
   ansible.builtin.template:
@@ -48,170 +283,213 @@
     group: postgres
     mode: "0640"
 
-- name: "{{ cluster.pg_name }} | Configure schedule backup"
-  block:
-    - ansible.builtin.template:
-        src: templates/stanza-backup.service.j2
-        dest: "/etc/systemd/system/{{ unit }}.service"
-        owner: root
-        group: root
-        mode: "0644"
-      loop: "{{ cluster.backups }}"
-      vars:
-        type: "{{ item['type'] }}"
-        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}"
 
-    - ansible.builtin.template:
-        src: templates/stanza-backup.timer.j2
-        dest: "/etc/systemd/system/{{ unit }}.timer"
-        owner: root
-        group: root
-        mode: "0644"
-      loop: "{{ cluster.backups }}"
-      vars:
-        oncalendar: "{{ item['oncalendar'] }}"
-        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}"
-      #register: __installed_timers
+# **Master block**
 
-    - ansible.builtin.systemd:
-        daemon_reload: true
+- block:
+  - name: "{{ cluster.pg_name }} | Check PostgreSQL is started"
+    become: true
+    become_user: postgres
+    ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
+    register: pg_ctl_status_result
+    changed_when: false
+    failed_when:
+      - pg_ctl_status_result.rc != 0
+      - pg_ctl_status_result.rc != 3
 
-    - ansible.builtin.systemd:
-        name: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item['type'] }}.timer"
+
+  - block:
+    - name: "{{ cluster.pg_name }} | Start PostgreSQL service via systemd (if not running)"
+      ansible.builtin.systemd:
+        name: "postgresql@{{ pg_ver }}-{{ cluster.pg_name }}"
         state: started
         enabled: true
-      loop: "{{ cluster.backups }}"
-
-  when: 
-    - cluster.backups is defined and cluster.backups | length > 0
-    - pg_role == 'master'
-
-- block: # on Master
-    - name: "{{ cluster.pg_name }} | Сheck PostgreSQL is started"
-      become: true
-      become_user: postgres
-      ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
-      register: pg_ctl_status_result
-      changed_when: false
-      failed_when:
-        - pg_ctl_status_result.rc != 0
-        - pg_ctl_status_result.rc != 3
-    
-    - block:
-        - name: "{{ cluster.pg_name }} | Start PostgreSQL"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} start"
-          register: pg_start_on_master
-        
-        - name: "{{ cluster.pg_name }} | Config replication"
-          ansible.builtin.copy:
-            dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
-            content: |
-              wal_level = replica
-              max_wal_senders = 3
-              archive_mode = on
-              archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{  cluster.pg_name }} archive-push %p'
-
-        - name: "{{ cluster.pg_name }} | Ensure the user replicator are present, and password does not differ from the specified"
-          community.postgresql.postgresql_user:
-            db: postgres
-            name: replicator
-            password: "{{ replicator_password }}"
-            encrypted: true
-            role_attr_flags: "LOGIN,REPLICATION"
-            login_unix_socket: "{{ pg_unix_socket_dir }}"
-            port: "{{ cluster.pg_port }}"
-            state: present
-          become: true
-          become_user: postgres
-
-        - name: Allow ldap connections for all with pg_hba.conf
-          community.postgresql.postgresql_pg_hba:
-            dest: "{{ pg_conf_dir }}/pg_hba.conf"
-            contype: host
-            databases: all
-            users: all
-            source: 10.0.0.0/8
-            method: ldap
-            options: 'ldapserver=cld-dc-01 ldapbasedn="cn=Users,dc=brusnika,dc=ltd" ldapbinddn="CN=pg-svc,OU=Users,OU=Service Users and Groups,DC=brusnika,DC=ltd" ldapbindpasswd="o7JkdxokvY4AR0gVIDD9OL47GANj" ldapsearchattribute="sAMAccountName"'
-            keep_comments_at_rules: true
-            comment: "this rule from role dbprime/_cluster.yml"
-          register: pg_hba_generate_ldap
-
-        - name: Allow replica connections with pg_hba.conf
-          community.postgresql.postgresql_pg_hba:
-            dest: "{{ pg_conf_dir }}/pg_hba.conf"
-            contype: host
-            databases: replication
-            users: replicator
-            source: "{{ hostvars[item].ansible_all_ipv4_addresses[0] }}/32"
-            method: scram-sha-256
-            keep_comments_at_rules: true
-            comment: "this rule from role dbprime/_cluster.yml"
-          loop: "{{ groups[group_names[0] + '_replica'] }}"
-          when: replica_enabled
-
-        - name: "{{ cluster.pg_name }} | Restart PostgreSQL"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} restart"
-
-        - name: "{{ cluster.pg_name }} | Create stanza"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} stanza-create"
-
-        - name: "{{ cluster.pg_name }} | Create backup"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup"
-
       when: pg_ctl_status_result.rc == 3
+
+    - name: "{{ cluster.pg_name }} | Config replication (master)"
+      ansible.builtin.copy:
+        dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
+        content: |
+          ssl = on
+          ssl_cert_file = 'server.crt'
+          ssl_key_file = 'server.key'
+          ssl_ca_file = 'root.crt'
+          wal_level = replica
+          max_wal_senders = 3
+          archive_mode = on
+          archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} archive-push %p'
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Ensure replicator user exists"
+      community.postgresql.postgresql_user:
+        db: postgres
+        name: replicator
+        password: "{{ replicator_password }}"
+        encrypted: true
+        role_attr_flags: "LOGIN,REPLICATION"
+        login_unix_socket: "{{ pg_unix_socket_dir }}"
+        port: "{{ cluster.pg_port }}"
+        state: present
+      become_user: postgres
+
+    - name: "{{ cluster.pg_name }} | Allow ldap connections for all with pg_hba.conf"
+      community.postgresql.postgresql_pg_hba:
+        dest: "{{ pg_conf_dir }}/pg_hba.conf"
+        contype: host
+        databases: all
+        users: all
+        source: 10.0.0.0/8
+        method: ldap
+        options: 'ldapserver=cld-dc-01 ldapbasedn="cn=Users,dc=brusnika,dc=ltd" ldapbinddn="CN=pg-svc,OU=Users,OU=Service Users and Groups,DC=brusnika,DC=ltd" ldapbindpasswd="angofaigie2jo5GaiN" ldapsearchattribute="sAMAccountName"'
+        keep_comments_at_rules: true
+        comment: "this rule from role dbprime/_cluster.yml"
+      register: pg_hba_generate_ldap
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Ensure replica connections with pg_hba.conf (require SSL)"
+      community.postgresql.postgresql_pg_hba:
+        dest: "{{ pg_conf_dir }}/pg_hba.conf"
+        contype: hostssl
+        databases: replication
+        users: replicator
+        source: "{{ hostvars[item].ansible_all_ipv4_addresses[0] }}/32"
+        method: scram-sha-256
+        keep_comments_at_rules: true
+        comment: "this rule from role dbprime/_cluster.yml"
+      loop: "{{ groups[group_names[0] + '_replica'] | default([]) }}"
+      when: replica_enabled
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Restart PostgreSQL service via systemd"
+      ansible.builtin.systemd:
+        name: "postgresql@{{ pg_ver }}-{{ cluster.pg_name }}"
+        state: restarted
+        enabled: true
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Create backup service unit(s)"
+      ansible.builtin.template:
+        src: templates/stanza-backup.service.j2
+        dest: "/etc/systemd/system/{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cluster.backups | default(default_backups) }}"
+      loop_control:
+        label: "{{ cluster.pg_name }}:{{ item.type }}"
+      vars:
+        item: "{{ item }}"
+        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
+        pg_data_dir: "{{ cluster.pg_data_dir | default('/var/lib/postgresql/' ~ pg_ver ~ '/' ~ cluster.pg_name) }}"
+      when: pg_role == 'master'
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Create backup timer unit(s)"
+      ansible.builtin.template:
+        src: templates/stanza-backup.timer.j2
+        dest: "/etc/systemd/system/{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cluster.backups | default(default_backups) }}"
+      loop_control:
+        label: "{{ cluster.pg_name }}:{{ item.type }}"
+      vars:
+        item: "{{ item }}"
+        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
+      when: pg_role == 'master'
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Reload systemd daemon"
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: pg_role == 'master'
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Enable and start backup timers"
+      ansible.builtin.systemd:
+        name: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.timer"
+        state: started
+        enabled: true
+      loop: "{{ cluster.backups | default(default_backups) }}"
+      loop_control:
+        label: "{{ cluster.pg_name }}:{{ item.type }}"
+      when: pg_role == 'master'
+      become: true
+
+    - name: "{{ cluster.pg_name }} | Create stanza"
+      become_user: postgres
+      ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} stanza-create"
+      when: pg_ctl_status_result.rc == 3
+
+    - name: "{{ cluster.pg_name }} | Create backup (initial)"
+      become_user: postgres
+      ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup"
+      when: pg_ctl_status_result.rc == 3
+      when: pg_role == 'master'
+
+    when: pg_ctl_status_result.rc == 3
   when: pg_role == 'master'
 
-- block: # On Replica
-    - name: Add pgpass
-      ansible.builtin.copy:
-        dest: "/var/lib/postgresql/.pgpass"
-        content: |
-          {{ hostvars[groups[group_names[0] + '_master'][0]].ansible_all_ipv4_addresses[0] }}:*:replication:replicator:{{ replicator_password }}
-        owner: postgres
-        group: postgres
-        mode: "0600"
 
-    - name: "{{ cluster.pg_name }} | Сheck PostgreSQL is started"
-      become: true
-      become_user: postgres
-      ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
-      register: pg_ctl_status_result
-      changed_when: false
-      failed_when:
-        - pg_ctl_status_result.rc != 0
-        - pg_ctl_status_result.rc != 3
+# **Replica block**
 
-    - block:
-        - name: "{{ cluster.pg_name }} | Start stanza restore"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pgbackrest --stanza {{ pg_ver }}_{{ cluster.pg_name }} --delta --type=standby restore"
-          register: pg_stanza_on_replica
+- block:
+  - name: "{{ cluster.pg_name }} | Add .pgpass for restore/replication"
+    ansible.builtin.copy:
+      dest: "/var/lib/postgresql/.pgpass"
+      content: |
+        {{ hostvars[groups[group_names[0] + '_master'][0]].ansible_all_ipv4_addresses[0] }}:*:replication:replicator:{{ replicator_password }}
+      owner: postgres
+      group: postgres
+      mode: "0600"
+    become: true
 
-        - name: "{{ cluster.pg_name }} | Config replication"
-          ansible.builtin.copy:
-            dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
-            content: |
-              wal_level = replica
-              max_wal_senders = 3
-              archive_mode = on
-              hot_standby = on
-              archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{  cluster.pg_name }} archive-push %p'
+  - name: "{{ cluster.pg_name }} | Check PostgreSQL is started"
+    become_user: postgres
+    ansible.builtin.command: "{{ pg_bin_dir }}/pg_ctl status -D {{ pg_data_dir }}"
+    register: pg_ctl_status_result
+    changed_when: false
+    failed_when:
+      - pg_ctl_status_result.rc != 0
+      - pg_ctl_status_result.rc != 3
 
-        - name: "{{ cluster.pg_name }} | Start PostgreSQL"
-          become: true
-          become_user: postgres
-          ansible.builtin.command: "/usr/bin/pg_ctlcluster {{ pg_ver }} {{ cluster.pg_name }} start"
-          register: pg_start_on_replica
+  - name: "{{ cluster.pg_name }} | Start stanza restore (replica) if PG not initialized"
+    become_user: postgres
+    ansible.builtin.command: "/usr/bin/pgbackrest --stanza {{ pg_ver }}_{{ cluster.pg_name }} --delta --type=standby restore"
+    register: pg_stanza_on_replica
+    failed_when: pg_stanza_on_replica.rc != 0 and pg_stanza_on_replica.rc is defined
+    when: pg_ctl_status_result.rc == 3
 
-      when: pg_ctl_status_result.rc == 3
-  when: pg_role == 'replica'
+  - name: "{{ cluster.pg_name }} | Start PostgreSQL service via systemd (replica) (if not running)"
+    ansible.builtin.systemd:
+      name: "postgresql@{{ pg_ver }}-{{ cluster.pg_name }}"
+      state: started
+      enabled: true
+    become: true
+    when: pg_ctl_status_result.rc == 3
+
+  - name: "{{ cluster.pg_name }} | Config replication (replica)"
+    ansible.builtin.copy:
+      dest: "{{ pg_conf_dir }}/conf.d/01_replication.conf"
+      content: |
+        ssl = on
+        ssl_cert_file = 'server.crt'
+        ssl_key_file = 'server.key'
+        ssl_ca_file = 'root.crt'
+        wal_level = replica
+        max_wal_senders = 3
+        archive_mode = on
+        hot_standby = on
+        archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} archive-push %p'
+
+  - name: "{{ cluster.pg_name }} | Restart PostgreSQL service via systemd (replica)"
+    ansible.builtin.systemd:
+      name: "postgresql@{{ pg_ver }}-{{ cluster.pg_name }}"
+      state: restarted
+      enabled: true
+    become: true
+    when: pg_ctl_status_result.rc == 0
+    when: pg_role == 'replica'
+  tags:
+    - cluster

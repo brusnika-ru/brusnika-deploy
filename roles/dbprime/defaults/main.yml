@@ -17,6 +17,18 @@ replica_enabled: True
 
 postgresql_pg_hba: []
 
+default_backups:
+  - type: full
+    oncalendar: "OnCalendar=*-*-* 00:00:00"
+  - type: incremental
+    oncalendar: |
+      OnCalendar=*-*-* 09:00:00
+      OnCalendar=*-*-* 13:00:00
+      OnCalendar=*-*-* 18:00:00
+
+ssh_key_name: "postgres-ssh-key"
+ssl_cert_days: 3650
+
 port_scheme:
   level:
     erp: 1
