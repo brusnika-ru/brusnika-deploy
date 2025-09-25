@@ -19,12 +19,12 @@ postgresql_pg_hba: []
 
 default_backups:
   - type: full
-    oncalendar: "OnCalendar=*-*-* 00:00:00"
+    oncalendar: "OnCalendar=*-*-* 23:00:00"
   - type: incr
     oncalendar: |
-      OnCalendar=*-*-* 09:00:00
-      OnCalendar=*-*-* 13:00:00
-      OnCalendar=*-*-* 18:00:00
+      OnCalendar=*-*-* 07:00:00
+      OnCalendar=*-*-* 11:00:00
+      OnCalendar=*-*-* 16:00:00
 
 ssh_key_name: "postgres-ssh-key"
 ssl_cert_days: 3650
