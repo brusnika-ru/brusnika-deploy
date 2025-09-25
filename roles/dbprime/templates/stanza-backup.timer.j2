@@ -1,9 +1,9 @@
 [Unit]
-Description=Timer for {{ unit }} backup service
+Description=Run pgBackRest backup for {{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}
+After=postgresql@{{ pg_ver }}-{{ cluster.pg_name }}.service
 
 [Timer]
-Unit={{ unit }}.service
-OnCalendar={{ oncalendar }}
+{{ item.oncalendar }}
 Persistent=true
 
 [Install]
