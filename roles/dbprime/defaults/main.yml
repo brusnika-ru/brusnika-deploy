@@ -20,7 +20,7 @@ postgresql_pg_hba: []
 default_backups:
   - type: full
     oncalendar: "OnCalendar=*-*-* 00:00:00"
-  - type: incremental
+  - type: incr
     oncalendar: |
       OnCalendar=*-*-* 09:00:00
       OnCalendar=*-*-* 13:00:00
