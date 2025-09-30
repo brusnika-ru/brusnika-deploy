@@ -367,36 +367,22 @@
         enabled: true
       become: true
 
-    - name: "{{ cluster.pg_name }} | Create backup service unit(s)"
+    - name: "{{ cluster.pg_name }} | Create backup cron job(s)"
       ansible.builtin.template:
-        src: templates/stanza-backup.service.j2
-        dest: "/etc/systemd/system/{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.service"
+        src: templates/stanza-backup.cron.j2
+        dest: "/etc/cron.d/{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ cluster.backups | default(default_backups) }}"
+      loop: 
+        - { type: "full" }
+        - { type: "incr" }
       loop_control:
         label: "{{ cluster.pg_name }}:{{ item.type }}"
       vars:
-        item: "{{ item }}"
-        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
+        cron_name: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
         pg_data_dir: "{{ cluster.pg_data_dir | default('/var/lib/postgresql/' ~ pg_ver ~ '/' ~ cluster.pg_name) }}"
-      when: pg_role == 'master'
-      become: true
-
-    - name: "{{ cluster.pg_name }} | Create backup timer unit(s)"
-      ansible.builtin.template:
-        src: templates/stanza-backup.timer.j2
-        dest: "/etc/systemd/system/{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.timer"
-        owner: root
-        group: root
-        mode: "0644"
-      loop: "{{ cluster.backups | default(default_backups) }}"
-      loop_control:
-        label: "{{ cluster.pg_name }}:{{ item.type }}"
-      vars:
-        item: "{{ item }}"
-        unit: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}"
+        backup_schedule: "{{ backup_schedules[item.type] }}"
       when: pg_role == 'master'
       become: true
 
