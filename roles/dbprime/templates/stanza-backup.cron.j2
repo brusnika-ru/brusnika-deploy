@@ -1,2 +1,2 @@
 # Cron job for {{ cron_name }} - {{ item.type }} backup
-{{ backup_schedule }} postgres /usr/bin/pgbackrest --stanza={{ cluster.pg_name }} backup --type={{ item.type }}
+{{ backup_schedule }} postgres /usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup --type={{ item.type }}
