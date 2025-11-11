@@ -320,6 +320,30 @@
           archive_command = 'pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} archive-push %p'
       become: true
 
+    - name: "{{ cluster.pg_name }} | Ensure pgbackweb user exists"
+      community.postgresql.postgresql_user:
+        name: pgbackweb
+        password: "{{ pgbackweb_password }}"
+        encrypted: true
+        role_attr_flags: "SUPERUSER"
+        login_unix_socket: "{{ pg_unix_socket_dir }}"
+        port: "{{ cluster.pg_port }}"
+        state: present
+      become_user: postgres
+
+    - name: "{{ cluster.pg_name }} | Allow pgbacweb connections for all with pg_hba.conf"
+      community.postgresql.postgresql_pg_hba:
+        dest: "{{ pg_conf_dir }}/pg_hba.conf"
+        contype: host
+        databases: all
+        users: pgbackweb
+        source: 10.0.0.0/8
+        method: scram-sha-256
+        keep_comments_at_rules: true
+        comment: "this rule from role dbprime/_cluster.yml"
+      register: pg_hba_generate_ldap
+      become: true
+
     - name: "{{ cluster.pg_name }} | Ensure replicator user exists"
       community.postgresql.postgresql_user:
         db: postgres
@@ -392,31 +416,16 @@
       when: pg_role == 'master'
       become: true
 
-    - name: "{{ cluster.pg_name }} | Enable and start backup timers"
-      ansible.builtin.systemd:
-        name: "{{ pg_ver }}_{{ cluster.pg_name }}-{{ item.type }}.timer"
-        state: started
-        enabled: true
-      loop: "{{ cluster.backups | default(default_backups) }}"
-      loop_control:
-        label: "{{ cluster.pg_name }}:{{ item.type }}"
-      when: pg_role == 'master'
-      become: true
-
     - name: "{{ cluster.pg_name }} | Create stanza"
       become_user: postgres
       ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} stanza-create"
-      when: pg_ctl_status_result.rc == 3
 
     - name: "{{ cluster.pg_name }} | Create backup (initial)"
       become_user: postgres
       ansible.builtin.command: "/usr/bin/pgbackrest --stanza={{ pg_ver }}_{{ cluster.pg_name }} backup"
-      when: pg_ctl_status_result.rc == 3
-      when: pg_role == 'master'
 
     when: pg_ctl_status_result.rc == 3
   when: pg_role == 'master'
-
 
 # **Replica block**
 

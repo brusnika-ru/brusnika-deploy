@@ -12,4 +12,5 @@ repo1-s3-verify-tls = {{ pgbackrest_repo_s3_verify_tls | default('y') }}
 repo1-retention-full = {{ pgbackrest_retention_full | default(30) }}
 
 [global:archive-push]
-compress-level=3
+compress-type=lz4
+compress-level=1

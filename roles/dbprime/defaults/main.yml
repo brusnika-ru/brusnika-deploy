@@ -11,7 +11,9 @@ pg_password_encryption_algorithm: scram-sha-256
 
 pg_unix_socket_dir: /var/run/postgresql
 
-replicator_password: 'doo6icaep0ooLuokae'
+replicator_password: ''
+
+pgbackweb_password: ''
 
 replica_enabled: True
 
