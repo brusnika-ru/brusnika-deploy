@@ -38,226 +38,229 @@
       content: |
         listen_addresses = 'localhost,{{ (ansible_all_ipv4_addresses | first) | default(ansible_default_ipv4.address) }}'
 
-  - name: "{{ cluster.pg_name }} | Ensure SSL subdir exists in PGDATA"
-    ansible.builtin.file:
-      path: "{{ pg_data_dir }}/ssl"
-      owner: postgres
-      group: postgres
-      state: directory
-      mode: "0700"
-    tags:
-    - ssl
-
-  - name: "{{ cluster.pg_name }} | Create openssl SAN config for this host"
-    ansible.builtin.copy:
-      dest: "{{ pg_data_dir }}/ssl/san.cnf"
-      owner: postgres
-      group: postgres
-      mode: "0644"
-      content: |
-        [ req ]
-        default_bits = 2048
-        prompt = no
-        default_md = sha256
-        distinguished_name = dn
-        req_extensions = v3_req
-
-        [ dn ]
-        CN = {{ inventory_hostname }}
-
-        [ v3_req ]
-        subjectAltName = @alt_names
-
-        [ alt_names ]
-        DNS.1 = {{ inventory_hostname }}
-        {% if ansible_fqdn is defined %}
-        DNS.2 = {{ ansible_fqdn }}
-        {% endif %}
-        IP.1 = {{ (ansible_all_ipv4_addresses | first) | default(ansible_default_ipv4.address) }}
-    tags:
+ ##
+  - block:
+    - name: "{{ cluster.pg_name }} | Ensure SSL subdir exists in PGDATA"
+      ansible.builtin.file:
+        path: "{{ pg_data_dir }}/ssl"
+        owner: postgres
+        group: postgres
+        state: directory
+        mode: "0700"
+      tags:
       - ssl
 
-  - name: "{{ cluster.pg_name }} | Generate server private key and self-signed certificate if missing"
-    become_user: postgres
-    ansible.builtin.command: >
-      openssl req -x509 -nodes -days {{ ssl_cert_days | default(3650) }}
-      -newkey rsa:2048
-      -keyout "{{ pg_data_dir }}/ssl/server.key"
-      -out "{{ pg_data_dir }}/ssl/server.crt"
-      -config "{{ pg_data_dir }}/ssl/san.cnf"
-      -extensions v3_req
-    args:
-      creates: "{{ pg_data_dir }}/ssl/server.crt"
-    register: openssl_generate
-    failed_when: openssl_generate.rc != 0
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Create openssl SAN config for this host"
+      ansible.builtin.copy:
+        dest: "{{ pg_data_dir }}/ssl/san.cnf"
+        owner: postgres
+        group: postgres
+        mode: "0644"
+        content: |
+          [ req ]
+          default_bits = 2048
+          prompt = no
+          default_md = sha256
+          distinguished_name = dn
+          req_extensions = v3_req
 
-  - name: "{{ cluster.pg_name }} | Ensure ownership and permissions for ssl/server files"
-    ansible.builtin.file:
-      path: "{{ item.path }}"
-      owner: postgres
-      group: postgres
-      mode: "{{ item.mode }}"
-    loop:
-      - { path: "{{ pg_data_dir }}/ssl/server.key", mode: "0600" }
-      - { path: "{{ pg_data_dir }}/ssl/server.crt", mode: "0644" }
-    tags:
-      - ssl
+          [ dn ]
+          CN = {{ inventory_hostname }}
 
-  - name: "{{ cluster.pg_name }} | Copy server.crt and server.key from ssl/ to PGDATA root (remote copy)"
-    ansible.builtin.copy:
-      src: "{{ item.src }}"
-      dest: "{{ item.dest }}"
-      owner: postgres
-      group: postgres
-      mode: "{{ item.mode }}"
-      remote_src: yes
-    loop:
-      - { src: "{{ pg_data_dir }}/ssl/server.crt", dest: "{{ pg_data_dir }}/server.crt", mode: "0644" }
-      - { src: "{{ pg_data_dir }}/ssl/server.key", dest: "{{ pg_data_dir }}/server.key", mode: "0600" }
-    loop_control:
-      label: "{{ item.src }}"
-    tags:
-      - ssl
+          [ v3_req ]
+          subjectAltName = @alt_names
 
-  # **Validate per-host server.crt and attempt to fix literal "\n" if necessary**
+          [ alt_names ]
+          DNS.1 = {{ inventory_hostname }}
+          {% if ansible_fqdn is defined %}
+          DNS.2 = {{ ansible_fqdn }}
+          {% endif %}
+          IP.1 = {{ (ansible_all_ipv4_addresses | first) | default(ansible_default_ipv4.address) }}
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Validate local server.crt (per host)"
-    ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
-    register: server_cert_check
-    failed_when: false
-    changed_when: false
-    become: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Generate server private key and self-signed certificate if missing"
+      become_user: postgres
+      ansible.builtin.command: >
+        openssl req -x509 -nodes -days {{ ssl_cert_days | default(3650) }}
+        -newkey rsa:2048
+        -keyout "{{ pg_data_dir }}/ssl/server.key"
+        -out "{{ pg_data_dir }}/ssl/server.crt"
+        -config "{{ pg_data_dir }}/ssl/san.cnf"
+        -extensions v3_req
+      args:
+        creates: "{{ pg_data_dir }}/ssl/server.crt"
+      register: openssl_generate
+      failed_when: openssl_generate.rc != 0
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | If invalid show head of server.crt for debug"
-    ansible.builtin.command: "sed -n '1,120p' {{ pg_data_dir }}/server.crt"
-    register: bad_cert_head
-    failed_when: false
-    changed_when: false
-    when: server_cert_check.rc != 0
-    become: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Ensure ownership and permissions for ssl/server files"
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        owner: postgres
+        group: postgres
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ pg_data_dir }}/ssl/server.key", mode: "0600" }
+        - { path: "{{ pg_data_dir }}/ssl/server.crt", mode: "0644" }
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Attempt to fix server.crt by replacing literal \n sequences (if invalid)"
-    ansible.builtin.shell: "perl -0777 -pe 's/ \\n/ \n/g; s/ \r//g' -i {{ pg_data_dir }}/server.crt"
-    when: server_cert_check.rc != 0
-    register: fix_result
-    failed_when: false
-    changed_when: fix_result.rc == 0
-    become: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Copy server.crt and server.key from ssl/ to PGDATA root (remote copy)"
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: postgres
+        group: postgres
+        mode: "{{ item.mode }}"
+        remote_src: yes
+      loop:
+        - { src: "{{ pg_data_dir }}/ssl/server.crt", dest: "{{ pg_data_dir }}/server.crt", mode: "0644" }
+        - { src: "{{ pg_data_dir }}/ssl/server.key", dest: "{{ pg_data_dir }}/server.key", mode: "0600" }
+      loop_control:
+        label: "{{ item.src }}"
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Re-validate server.crt after fix (per host)"
-    ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
-    register: server_cert_check2
-    failed_when: false
-    changed_when: false
-    when: server_cert_check.rc != 0
-    become: true
-    tags:
-      - ssl
+    # **Validate per-host server.crt and attempt to fix literal "\n" if necessary**
 
-  - name: "{{ cluster.pg_name }} | Set pg_has_server_cert fact"
-    ansible.builtin.set_fact:
-      pg_has_server_cert: "{{ (server_cert_check.rc == 0) or (server_cert_check2 is defined and server_cert_check2.rc == 0) }}"
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Validate local server.crt (per host)"
+      ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
+      register: server_cert_check
+      failed_when: false
+      changed_when: false
+      become: true
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Debug cert issues when fix failed"
-    ansible.builtin.debug:
-      msg:
-        - "server.crt invalid on host {{ inventory_hostname }} and automatic fix failed (see bad_cert_head)"
-        - "{{ bad_cert_head.stdout_lines | default([]) }}"
-    when: not pg_has_server_cert
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | If invalid show head of server.crt for debug"
+      ansible.builtin.command: "sed -n '1,120p' {{ pg_data_dir }}/server.crt"
+      register: bad_cert_head
+      failed_when: false
+      changed_when: false
+      when: server_cert_check.rc != 0
+      become: true
+      tags:
+        - ssl
 
-  # **Collect only from hosts with valid server.crt (run_once per cluster)**
+    - name: "{{ cluster.pg_name }} | Attempt to fix server.crt by replacing literal \n sequences (if invalid)"
+      ansible.builtin.shell: "perl -0777 -pe 's/ \\n/ \n/g; s/ \r//g' -i {{ pg_data_dir }}/server.crt"
+      when: server_cert_check.rc != 0
+      register: fix_result
+      failed_when: false
+      changed_when: fix_result.rc == 0
+      become: true
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Collect server.crt from hosts that have valid cert (delegated, run_once)"
-    ansible.builtin.slurp:
-      src: "{{ pg_data_dir }}/server.crt"
-    register: slurped_certs
-    run_once: true
-    loop: "{{ ansible_play_hosts_all }}"
-    loop_control:
-      label: "{{ item }}"
-    delegate_to: "{{ item }}"
-    when: hostvars[item].pg_has_server_cert | default(false)
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Re-validate server.crt after fix (per host)"
+      ansible.builtin.command: "openssl x509 -in {{ pg_data_dir }}/server.crt -noout -text"
+      register: server_cert_check2
+      failed_when: false
+      changed_when: false
+      when: server_cert_check.rc != 0
+      become: true
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Extract PEM blocks from collected certs (run_once)"
-    ansible.builtin.set_fact:
-      combined_root_crt_raw: >-
-        {{  
-        (slurped_certs.results | default([]))  
-        | map(attribute='content')  
-        | map('b64decode')  
-        | map('replace','\r','')  
-        | map('regex_findall','(?ms)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----')  
-        | flatten  
-        | map('trim')  
-        | reject('equalto','')  
-        | list  
-        | join('\n\n')  
-        }}
-    run_once: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Set pg_has_server_cert fact"
+      ansible.builtin.set_fact:
+        pg_has_server_cert: "{{ (server_cert_check.rc == 0) or (server_cert_check2 is defined and server_cert_check2.rc == 0) }}"
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Normalize any remaining literal escapes in combined_root_crt (run_once)"
-    ansible.builtin.set_fact:
-      combined_root_crt: >-
-        {{  
-        (combined_root_crt_raw | default(''))  
-        | replace(' \n','\n')  
-        | replace(' \r','')  
-        }}
-    run_once: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Debug cert issues when fix failed"
+      ansible.builtin.debug:
+        msg:
+          - "server.crt invalid on host {{ inventory_hostname }} and automatic fix failed (see bad_cert_head)"
+          - "{{ bad_cert_head.stdout_lines | default([]) }}"
+      when: not pg_has_server_cert
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Quick debug: first 6 lines of combined_root_crt (run_once)"
-    ansible.builtin.debug:
-      msg: "{{ (combined_root_crt.splitlines()[:6]) | join('\n') }}"
-    run_once: true
-    tags:
-      - ssl
+    # **Collect only from hosts with valid server.crt (run_once per cluster)**
 
-  - name: "{{ cluster.pg_name }} | Fail if no PEM blocks found (run_once)"
-    ansible.builtin.fail:
-      msg: "No valid PEM blocks found when building combined root.crt — aborting. Check per-host server.crt contents."
-    when:
-      - combined_root_crt is not defined
-      - combined_root_crt | default('') | regex_search('-----BEGIN CERTIFICATE-----') == none
-    run_once: true
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Collect server.crt from hosts that have valid cert (delegated, run_once)"
+      ansible.builtin.slurp:
+        src: "{{ pg_data_dir }}/server.crt"
+      register: slurped_certs
+      run_once: true
+      loop: "{{ ansible_play_hosts_all }}"
+      loop_control:
+        label: "{{ item }}"
+      delegate_to: "{{ item }}"
+      when: hostvars[item].pg_has_server_cert | default(false)
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Write combined root.crt to PGDATA on all hosts"
-    ansible.builtin.copy:
-      dest: "{{ pg_data_dir }}/root.crt"
-      content: "{{ combined_root_crt | default('') }}"
-      owner: postgres
-      group: postgres
-      mode: "0644"
-    when: combined_root_crt is defined and combined_root_crt != ''
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Extract PEM blocks from collected certs (run_once)"
+      ansible.builtin.set_fact:
+        combined_root_crt_raw: >-
+          {{  
+          (slurped_certs.results | default([]))  
+          | map(attribute='content')  
+          | map('b64decode')  
+          | map('replace','\r','')  
+          | map('regex_findall','(?ms)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----')  
+          | flatten  
+          | map('trim')  
+          | reject('equalto','')  
+          | list  
+          | join('\n\n')  
+          }}
+      run_once: true
+      tags:
+        - ssl
 
-  - name: "{{ cluster.pg_name }} | Normalize PEM blocks in root.crt (fix literal \\n)"
-    ansible.builtin.shell: |
-      perl -0777 -pe 's/\\n/\n/g; s/\\r//g' -i "{{ pg_data_dir }}/root.crt"
-    become: true
-    when: combined_root_crt is defined and combined_root_crt != ''
-    tags:
-      - ssl
+    - name: "{{ cluster.pg_name }} | Normalize any remaining literal escapes in combined_root_crt (run_once)"
+      ansible.builtin.set_fact:
+        combined_root_crt: >-
+          {{  
+          (combined_root_crt_raw | default(''))  
+          | replace(' \n','\n')  
+          | replace(' \r','')  
+          }}
+      run_once: true
+      tags:
+        - ssl
+
+    - name: "{{ cluster.pg_name }} | Quick debug: first 6 lines of combined_root_crt (run_once)"
+      ansible.builtin.debug:
+        msg: "{{ (combined_root_crt.splitlines()[:6]) | join('\n') }}"
+      run_once: true
+      tags:
+        - ssl
+
+    - name: "{{ cluster.pg_name }} | Fail if no PEM blocks found (run_once)"
+      ansible.builtin.fail:
+        msg: "No valid PEM blocks found when building combined root.crt — aborting. Check per-host server.crt contents."
+      when:
+        - combined_root_crt is not defined
+        - combined_root_crt | default('') | regex_search('-----BEGIN CERTIFICATE-----') == none
+      run_once: true
+      tags:
+        - ssl
+
+    - name: "{{ cluster.pg_name }} | Write combined root.crt to PGDATA on all hosts"
+      ansible.builtin.copy:
+        dest: "{{ pg_data_dir }}/root.crt"
+        content: "{{ combined_root_crt | default('') }}"
+        owner: postgres
+        group: postgres
+        mode: "0644"
+      when: combined_root_crt is defined and combined_root_crt != ''
+      tags:
+        - ssl
+
+    - name: "{{ cluster.pg_name }} | Normalize PEM blocks in root.crt (fix literal \\n)"
+      ansible.builtin.shell: |
+        perl -0777 -pe 's/\\n/\n/g; s/\\r//g' -i "{{ pg_data_dir }}/root.crt"
+      become: true
+      when: combined_root_crt is defined and combined_root_crt != ''
+      tags:
+        - ssl
+    when: pg_ctl_status_result.rc == 0
   when: not postgresql_conf_file.stat.exists
 
 # **TLS certs for PostgreSQL replication (per-instance, stored under PGDATA of this instance)**
